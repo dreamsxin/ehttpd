@@ -1,0 +1,56 @@
+<HTML>
+<HEAD>
+<TITLE>EhttpD Sample Programs</TITLE>
+</HEAD>
+<BODY BGCOLOR="#333333" TEXT="#00EE00"  ALINK="#FFFFFF" VLINK="#FFFFFF">
+<CENTER>
+
+<h2>
+This is the EhttpD Test Page
+<hr size=8 color=#0000ee>
+You should see a message below
+</h2>
+<h2>
+<font  face="Verdana" color="#ff1100">	<!- Yes, deprecated -->
+The messge is:&nbsp;##MESSAGE##
+</font>
+
+<hr size=8 color=#0000ee>
+</CENTER>
+The time is:&nbsp;##CURRENTTIME##
+<hr size=8 color=#0000ee>
+The URL is:&nbsp;##URL##
+<h4>If this doesn't look interesting, try appending <b>"?CMD=FOO&ACTION=Bla"</b> to the URL</h4>
+<hr size=8 color=#0000ee>
+The FILENAME is:&nbsp;##FILENAME##
+
+<hr size=8 color=#0000ee>
+The value of CMD is ------&gt;&nbsp;##CMD##<br>
+The value of ACTION is ------&gt;&nbsp;##ACTION##<br>
+LINK: <a href="/index.html?CMD=CommandOne&ACTION=Jump">/index.html?CMD=CommandOne&ACTION=Jump</a><br>
+LINK: <a href="/index.html?CMD=CommandTwo&ACTION=Drive">Another link</a>
+
+<hr size=8 color=#0000ee>
+
+<form name="mainsearch" action="/index.html" method="post">
+Type something here, then click a button
+<input type="text" name="NAME"</input> <input type="submit" name="mybutton" value="Echo"><input type="submit" name="mybutton" value="Print Length">
+
+
+<SELECT NAME="Dropdown">
+	<OPTION VALUE="Red">Apple</OPTION>
+	<OPTION VALUE="Yellow">Bannana</OPTION>
+	<OPTION VALUE="Orange">Orange</OPTION>
+	<OPTION VALUE="BrownNGreen">Kiwi</OPTION>
+</SELECT>
+
+
+</form>
+<hr size=8 color=#0000ee>
+##RESULTS##<br>
+The color of the fruit you selected is ##FCOLOR##
+</h2>
+
+</BODY>
+</HTML>
+

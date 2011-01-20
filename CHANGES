@@ -1,0 +1,20 @@
+CHANGES for Easyhttpd 1.1.0b
+July 18, 2007
+============================
+
+Removed regex as a dependency.  Regex library is no longer needed.
+
+Added member functions to do the following:
+	o  Get the client headers
+	o  Send headers back to the client
+	o  Specify alternate socket send/recv functions to support use with OpenSSL
+	o  Specify a pre-request handler, a handler that can be called for all requests 
+	   before the specifc request handler get called
+
+Fixed bug in helloworld_template.html.  
+
+Fixed bug in parse which occured when the client did not send any headers.
+
+Added hello world sample using OpenSSL.
+
+Added the wiki: http://www.littletux.com/wiki

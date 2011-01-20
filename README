@@ -1,0 +1,93 @@
+EhttpD - EasyHTTPD Server/Parser C++ Class
+
+README - July 18, 2007
+
+Project Website (wiki and documentation): 
+	http://www.littletux.com
+	
+Sourceforge Project Page (download releases):
+	http://sourceforge.net/projects/ehttpd/
+	
+Copyright (c) 2007, Barry Sprajc (bsprajc@speakeasy.net)
+---------------------------------------------------------------------
+
+INTRODUCTION:
+
+	EasyHTTPD is a drop in C++ class to implement an HTTP 1.0 Server
+	Its intended use is to allow an application to be controlled by a 
+	browser, hence Embedded.
+
+	To this functionality to an app, add the C++ class to the 
+	application, write and register request callback handlers with 
+	the class, and call the parser with a connected socket.
+
+	The parser will extract any options passed in the URL, extract 
+	POST values, and call the desired handler.
+
+	The handler get a pointer to the application via void ptr, has 
+	access to the extracted options and POST values, and then write 
+	the desired output back to the socket.
+
+	For easy dynamic page generation, an HTML template file can be 
+	used, and the handler simply specifies token tags in the template 
+	to be replace with the dynamic values
+
+
+HOW TO USE IN YOUR APPLICATION:
+
+	These classes use the STL (Standard Template Library), so your
+	enviroment must have the STL available.
+
+	Add the embedhttp.cpp file to your project, and the embedhttp.h
+	file to the file(s) in your project that handles incomming socket
+	connections.  
+
+	See the sample1.cpp and helloworld.cpp files to get an idea of 
+	how to use these classes.
+
+
+SAMPLE APPLICATIONS:
+
+	Run build.sh -  	This will build the sample applications.
+	Run buildssl.sh		This will build the sample SSL app. You need OpenSSL.
+
+DOCUMENTATION:
+
+	See the embedhttp.h header file for documentation of the member
+	functions. The wiki is more up to date, however strange.
+
+	See the sample applications to learn how they can be used
+
+	See http://www.littletux.com/wiki for documentation on the API, usage,etc...
+
+LIST OF FILES:
+
+        embedhttp.cpp-------------------EasyHTTPD Class Implementation file
+        embedhttp.h---------------------EasyHTTPD Class header file
+
+        build.sh------------------------Build script to build the hello world
+        buildssl.sh---------------------and sample applications
+
+
+        sample1.cpp---------------------Sample application
+        index_template.html-------------HTML template file for sample app
+
+
+        helloworld.cpp------------------Hello World application (very simple)
+        helloworldssl.cpp---------------Hello World with an SSL twist
+	
+        helloworld_template.html--------HTML template file for hello world app
+
+        connection.cpp------------------Helper Class, listens on a socket for 
+                                        incomming connections, used for the 
+                                        sample applications.
+
+        connection.h--------------------'Nuff said					
+
+
+QUESTIONS/HELPING WITH THIS PROJECT:
+
+	Contact me(Barry Sprajc) at bsprajc@speakeasy.net if you
+	have questions or wish to contribute in some form to this 
+	project.
+	
