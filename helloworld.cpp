@@ -54,7 +54,7 @@ int main( int argc, char *argv[] )
 
 	// Listen on port 80 for requests
 	Connection c(1);
-	if( c.init(80) )
+	if( c.init(12345) )
 		exit(1);
 
 

@@ -336,210 +336,219 @@ void ehttp::set_prerequest_handler( void (*pHandler)(ehttp &obj, void *cookie))
 	}
 
 
-int ehttp:: read_header( int fd, void *cookie, string &header, string &message )
-	{
+int ehttp:: read_header( int fd, void *cookie, string &header, string &message ) {
+  header="";
+  unsigned int offset=0;
+  while((offset=header.find("\r\n\r\n"))==string::npos ) {
+    input_buffer[0]=0;
+    int r=pRecv((void*)fd,&input_buffer[0],INPUT_BUFFER_SIZE,cookie);
+    if( r < 0 ) {
+      return EHTTP_ERR_GENERIC;
+    }
+    input_buffer[r]=0;
+    header+=input_buffer;
+  }
+  message=header.substr(offset+4);
+  /* Fix the case where only "GET /xxxxx HTTP1.0\r\n\r\n" is sent (no other headers)*/
+  if(offset == header.find("\r\n")) {
+    header=header.substr(0,offset+2);
+  } else {
+    header=header.substr(0,offset);
+  }
+  dprintf("Header:-->%s<--\r\n",header.c_str());
+  dprintf("Message:-->%s<--\r\n",message.c_str());
+  return EHTTP_ERR_OK;
+}
 
-	header="";
-	unsigned int offset=0;
-	while((offset=header.find("\r\n\r\n"))==string::npos )
-		{
-		input_buffer[0]=0;
-		int r=pRecv((void*)fd,&input_buffer[0],INPUT_BUFFER_SIZE,cookie);
-		if( r < 0 )
-			return EHTTP_ERR_GENERIC;
-		input_buffer[r]=0;
-		header+=input_buffer;
-		}
-	message=header.substr(offset+4);
-	/* Fix the case where only "GET /xxxxx HTTP1.0\r\n\r\n" is sent (no other headers)*/
-	if(offset == header.find("\r\n"))
-		header=header.substr(0,offset+2);
-	else
-		header=header.substr(0,offset);
-	dprintf("Header:-->%s<--\r\n",header.c_str());
-	dprintf("Message:-->%s<--\r\n",message.c_str());
-	return EHTTP_ERR_OK;
-	}
+
+int ehttp::parse_out_pairs(void *cookie, string &remainder, map <string, string> &parms) {
+  string id;
+  string value;
+  int state=0;
+
+  // run through the string and pick off the parms as we see them
+  for (unsigned int i=0; i < remainder.length();) {
+    switch (state) {
+    case 0:
+      id = "";
+      value = "";
+      state = 1;
+      break;
+    case 1:
+      switch (remainder[i]) {
+      case '=':
+        state = 2;
+        break;
+      default:
+        id += remainder[i];
+        break;
+      }
+      i++;
+      break;
+    case 2:
+      switch (remainder[i]) {
+      case '&':
+        parms[id] = value;
+        dprintf("Added %s to %s\r\n",id.c_str(),value.c_str());
+        state = 0;
+        break;
+      default:
+        value += remainder[i];
+        break;
+      }
+      i++;
+      break;
+    }
+  }
+  // Add non-nil value to parm list
+  if( state == 2 )
+    parms[id]=value;
+
+  return EHTTP_ERR_OK;
+}
 
 
-int ehttp:: parse_out_pairs( void *cookie, string &remainder, map <string, string> &parms )
-	{
-	string id;
-	string value;
-	int state=0;
+int ehttp::parse_header(void *cookie, string &header) {
+  char *request=NULL;
+  char *request_end=NULL;
+  const char *pHeader=header.c_str();
 
-	// run through the string and pick off the parms as we see them
-	for(unsigned int i=0; i < remainder.length();)
-		{
-		switch( state )
-			{
-			case 0:
-				id="";
-				value="";
-				state=1;
-				break;
+  filename="";							
+  contentlength=0;
+  requesttype=-1;
 
-			case 1:
-				switch( remainder[i] )
-					{
-					case '=':
-						state=2;
-						break;
-					default:
-						id+=remainder[i];
-						break;
-					}
-				i++;
-				break;
+  // Find end of request URL
+  printf("pHeader == [%s]\r\n",pHeader);	
+  request_end=strstr(pHeader," HTTP/1.0\r\n");
+  if (!request_end) {
+    request_end=strstr(pHeader," HTTP/1.1\r\n");
+  }
+  if (!request_end) {
+    dprintf("ERROR %d:%s\r\n",__LINE__,__FUNCTION__);
+    return EHTTP_ERR_GENERIC;
+  }
 
-			case 2:
-				switch( remainder[i] )
-					{
-					case '&':
-						parms[id]=value;
-						dprintf("Added %s to %s\r\n",id.c_str(),value.c_str());
-						state=0;
-						break;
-					default:
-						value+=remainder[i];
-						break;
-					}
-				i++;
-				break;
+  // Is this a GET request
+  if (requesttype == -1 ) {
+    request=strstr(pHeader,"GET ");
+  }
+  if (request) {
+    request+=4;
+    requesttype=EHTTP_REQUEST_GET;
+  }
+
+  // Is this a POST request
+  if (requesttype == -1) {
+    request=strstr(pHeader,"POST ");
+    if( request ) {
+      request+=5;
+      requesttype=EHTTP_REQUEST_POST;
+    }
+  }
+
+  // didn't find a get,post,etc...
+  if (requesttype == -1) {
+    dprintf("ERROR %d:%s\r\n",__LINE__,__FUNCTION__);
+    return EHTTP_ERR_GENERIC;
+  }
+
+  // malformed request
+  if (request_end <= request) {
+    dprintf("ERROR %d:%s\r\n",__LINE__,__FUNCTION__);
+    return EHTTP_ERR_GENERIC;
+  }
+
+  // get the url requested
+  while (request != request_end) {
+    filename+=*request++;
+  }
+
+  // move to end of request
+  request_end+=11;// length of " HTTP/1.1\r\n"
 	
-			}
-		}
-	// Add non-nil value to parm list
-	if( state == 2 )
-		parms[id]=value;
+  // Save the complete URL
+  url=filename;
 
-	return EHTTP_ERR_OK;
-	}
+  // See if there are params passed on the request
+  int idx=filename.find("?");
+  if (idx > -1) {
+    // Yank out filename minus parms which follow
+    string remainder=filename.substr(idx+1);
+    filename=filename.substr(0,idx);
+    parse_out_pairs(cookie, remainder, url_parms);
+  }
 
+  // Find request headers,
+  while (*request_end!='\r' && *request_end!='\0') {
+    char *keyend=strstr(request_end,": ");
 
-int ehttp:: parse_header( void *cookie, string &header )
-{
-	char *request=NULL;
-	char *request_end=NULL;
-	const char *pHeader=header.c_str();
+    // get the key
+    if (keyend && keyend>request_end) {
+      string key,value;
+      key="";
+      value="";
+      while (keyend > request_end) {
+        key+=(*request_end++);
+      }
+      //get the value of the key
+      request_end=keyend+2;
+      char *valueend=strstr(request_end,"\r\n");
 
-	filename="";							
-	contentlength=0;
-	requesttype=-1;
+      //are we at end of header section
+      if (!valueend) {
+        valueend=request_end+strlen(request_end);
+      }
+      // read in the value
+      if (valueend) {
+        while (request_end < valueend) {
+          value+=*request_end++;
+        }
+        //add key value pair to map
+        request_header[key]=value;
+        dprintf("Header : ...%s... == ...%s...\r\n",key.c_str(),value.c_str());
+        if (*request_end) {
+          request_end+=2;
+        }
+      }
+    } else {
+      //Somthing went wrong
+      dprintf("ERROR %d:%s\r\n",__LINE__,__FUNCTION__);
+      return EHTTP_ERR_GENERIC;
+    }
+  }
+  // Parse Cookie
+  string cookie_string = request_header["Cookie"];
+  
+  map<string, string>* cookie_map = (map<string, string>*)cookie;
+  cookie_map = new map<string, string>();
+  cookie_map->clear();
 
-	// Find end of request URL
-printf("pHeader == [%s]\r\n",pHeader);	
-	request_end=strstr(pHeader," HTTP/1.0\r\n");
-	if( !request_end )
-			request_end=strstr(pHeader," HTTP/1.1\r\n");
-	if( !request_end )
-		{
-		dprintf("ERROR %d:%s\r\n",__LINE__,__FUNCTION__);
-		return EHTTP_ERR_GENERIC;
-		}
+  string delimiters = " =;";
+  string::size_type lastPos = cookie_string.find_first_not_of(delimiters, 0);
+  string::size_type pos     = cookie_string.find_first_of(delimiters, lastPos);
 
-	// Is this a GET request
-	if( requesttype == -1 )
-		request=strstr(pHeader,"GET ");
-	if( request )
-		{
-		request+=4;
-		requesttype=EHTTP_REQUEST_GET;
-		}
+  while (string::npos != pos || string::npos != lastPos) {
+    string key = cookie_string.substr(lastPos, pos - lastPos);
+    lastPos = cookie_string.find_first_not_of(delimiters, pos);
+    pos = cookie_string.find_first_of(delimiters, lastPos);
+    if (string::npos == pos && string::npos == lastPos) {
+      return EHTTP_ERR_GENERIC;
+    }
+    string value = cookie_string.substr(lastPos, pos - lastPos);
+    lastPos = cookie_string.find_first_not_of(delimiters, pos);
+    pos = cookie_string.find_first_of(delimiters, lastPos);
+    (*cookie_map)[key] = value;
+  }
 
-	// Is this a POST request
-	if( requesttype == -1 )
-		{
-		request=strstr(pHeader,"POST ");
-		if( request )
-			{
-			request+=5;
-			requesttype=EHTTP_REQUEST_POST;
-			}
-		}
-
-	// didn't find a get,post,etc...
-	if( requesttype == -1 )
-		{
-		dprintf("ERROR %d:%s\r\n",__LINE__,__FUNCTION__);
-		return EHTTP_ERR_GENERIC;
-		}
-
-	// malformed request
-	if( request_end <= request )
-		{
-		dprintf("ERROR %d:%s\r\n",__LINE__,__FUNCTION__);
-		return EHTTP_ERR_GENERIC;
-		}
-
-	// get the url requested
-	while( request != request_end )
-		{
-		filename+=*request++;
-		}
-
-	// move to end of request
-	request_end+=11;// length of " HTTP/1.1\r\n"
-	
-	// Save the complete URL
-	url=filename;
-
-	// See if there are params passed on the request
-	int idx=filename.find("?");
-	if( idx > -1 )
-		{
-		// Yank out filename minus parms which follow
-		string remainder=filename.substr(idx+1);
-		filename=filename.substr(0,idx);
-		parse_out_pairs(cookie, remainder, url_parms);
-		}
-
-	// Find request headers,
-	while( *request_end!='\r' && *request_end!='\0' )
-		{
-		char *keyend=strstr(request_end,": ");
-
-		// get the key
-		if( keyend && keyend>request_end )
-			{
-			string key,value;
-			key="";
-			value="";
-			while( keyend > request_end)
-				key+=(*request_end++);
-
-			//get the value of the key
-			request_end=keyend+2;
-			char *valueend=strstr(request_end,"\r\n");
-
-			//are we at end of header section
-			if(!valueend)
-				valueend=request_end+strlen(request_end);
-			// read in the value
-			if( valueend )
-				{
-				while( request_end < valueend )
-					value+=*request_end++;
-				//add key value pair to map
-				request_header[key]=value;
-				dprintf("Header : ...%s... == ...%s...\r\n",key.c_str(),value.c_str());
-				if( *request_end )
-					request_end+=2;
-				}
-			}
-		else
-			{
-			//Somthing went wrong
-			dprintf("ERROR %d:%s\r\n",__LINE__,__FUNCTION__);
-			return EHTTP_ERR_GENERIC;
-				}
-		}
-			
-	// Find content length
-	contentlength=atoi( request_header["CONTENT-LENGTH"].c_str() );
-	return EHTTP_ERR_OK;		
-	
-
+  map<string, string>::iterator it;
+  for (it=cookie_map->begin() ; it != cookie_map->end(); ++it) {
+    dprintf("CookieParsing; %s : %s\r\n",(*it).first.c_str(), (*it).second.c_str());
+    //    cout<<(*it).first << (*it).second <<endl;
+  }
+  
+  // Find content length
+  contentlength=atoi (request_header["CONTENT-LENGTH"].c_str());
+  return EHTTP_ERR_OK;		
 }
 
 int ehttp:: parse_message( int fd, void *cookie, string &message )
@@ -583,68 +592,63 @@ int ehttp:: parse_message( int fd, void *cookie, string &message )
 	}
 
 
-int ehttp:: parse_request( int fd, void *cookie )
-	{
-	int (*pHandler)(ehttp &obj, void *cookie)=NULL;
+int ehttp::parse_request( int fd, void *cookie ) {
+  int (*pHandler)(ehttp &obj, void *cookie)=NULL;
 
-	/* Things in the object which must be reset for each request */
-	filename="";
-	localFD=fd;
-	ptheCookie=cookie;
-	filetype=EHTTP_TEXT_FILE;
-	url_parms.clear();
-	post_parms.clear();
-	request_header.clear();
-	replace_token.clear();
-	contentlength=0;
+  /* Things in the object which must be reset for each request */
+  filename="";
+  localFD=fd;
+  ptheCookie=cookie;
+  filetype=EHTTP_TEXT_FILE;
+  url_parms.clear();
+  post_parms.clear();
+  request_header.clear();
+  replace_token.clear();
+  contentlength=0;
 
-	string header;
-	string message;
+  string header;
+  string message;
 
-	if( read_header(fd,cookie, header, message) == EHTTP_ERR_OK )
-		if( parse_header(cookie,header)  == EHTTP_ERR_OK )
-			if( parse_message(fd,cookie, message)  == EHTTP_ERR_OK )
-				{
+  if( read_header(fd,cookie, header, message) == EHTTP_ERR_OK ) {
+    if( parse_header(cookie,header)  == EHTTP_ERR_OK ) {
+      if( parse_message(fd,cookie, message)  == EHTTP_ERR_OK ) {
 
-				// We are HTTP1.0 and need the content len to be valid
-				// Opera Broswer
-				if( contentlength==0 && requesttype==EHTTP_REQUEST_POST )
-					{
-					return out_commit(EHTTP_LENGTH_REQUIRED);
-					}
+        // We are HTTP1.0 and need the content len to be valid
+        // Opera Broswer
+        if( contentlength==0 && requesttype==EHTTP_REQUEST_POST ) {
+          return out_commit(EHTTP_LENGTH_REQUIRED);
+        }
 
 				
-				//Call the default handler if we didn't get the filename
-				out_buffer_clear();
+        //Call the default handler if we didn't get the filename
+        out_buffer_clear();
 
-				if( pPreRequestHandler ) pPreRequestHandler( *this, ptheCookie );
-				if( !filename.length() )
-					{
-					dprintf("%d Call default handler no filename \r\n",__LINE__);
-					return pDefaultHandler( *this, ptheCookie );
-					}
-				else
-					{
-					//Lookup the handler function fo this filename
-					pHandler=handler_map[filename];
-					//Call the default handler if we didn't get the filename
-					if( !pHandler )
-						{
-						dprintf("%d Call default handler\r\n",__LINE__);
+        if( pPreRequestHandler ) pPreRequestHandler( *this, ptheCookie );
+        if( !filename.length() ) {
+          dprintf("%d Call default handler no filename \r\n",__LINE__);
+          return pDefaultHandler( *this, ptheCookie );
+        }
+        else {
+          //Lookup the handler function fo this filename
+          pHandler=handler_map[filename];
+          //Call the default handler if we didn't get the filename
+          if( !pHandler ) {
+            dprintf("%d Call default handler\r\n",__LINE__);
 						
-						return pDefaultHandler( *this, ptheCookie );
-						}
-					//Found a handler
-					else
-						{
-						dprintf("%d Call user handler\r\n",__LINE__);
-						return pHandler( *this, ptheCookie );
-						}
-					}
-				}
-	dprintf("Error parsing request\r\n");
-	return EHTTP_ERR_GENERIC;
-	}
+            return pDefaultHandler( *this, ptheCookie );
+          }
+          //Found a handler
+          else {
+            dprintf("%d Call user handler\r\n",__LINE__);
+            return pHandler( *this, ptheCookie );
+          }
+        }
+      }
+    }
+  }
+  dprintf("Error parsing request\r\n");
+  return EHTTP_ERR_GENERIC;
+}
 
 
 void ehttp::setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len, void *cookie) )
