@@ -64,8 +64,8 @@ enum{
 
 
 
-ssize_t ehttpRecv(void *ctx, void *buf, size_t len, void *cookie);
-ssize_t ehttpSend(void *ctx, const void *buf, size_t len, void *cookie);
+ssize_t ehttpRecv(void *ctx, void *buf, size_t len, map <string, string> *cookie);
+ssize_t ehttpSend(void *ctx, const void *buf, size_t len, map <string, string> *cookie);
 
 
 
@@ -80,12 +80,12 @@ class ehttp
 {
   char input_buffer[INPUT_BUFFER_SIZE];
 
-  void *ptheCookie;
-
   int localFD;
   int filetype;
   int requesttype;
   unsigned int contentlength;
+
+  map <string, string> *ptheCookie;
 
   string filename;            //filename of the url
   string url;                //the url
@@ -100,22 +100,21 @@ class ehttp
   map <string, string> replace_token;
   map <string, string> response_header;
 
-  map <string, int (*)(ehttp &obj, void *cookie)> handler_map;
-  int (*pDefaultHandler)(ehttp &obj, void *cookie);
-  void (*pPreRequestHandler)(ehttp &obj, void *cookie);
+  map <string, int (*)(ehttp &obj, map <string, string> *cookie)> handler_map;
+  int (*pDefaultHandler)(ehttp &obj, map <string, string> *cookie);
+  void (*pPreRequestHandler)(ehttp &obj, map <string, string> *cookie);
 
-  ssize_t (*pRecv)(void *ctx, void *buf, size_t len, void *cookie);
-  ssize_t (*pSend)(void *ctx, const void *buf, size_t len, void *cookie);
+  ssize_t (*pRecv)(void *ctx, void *buf, size_t len, map <string, string> *cookie);
+  ssize_t (*pSend)(void *ctx, const void *buf, size_t len, map <string, string> *cookie);
 
-
-  int read_header( int fd, void *cookie, string &header, string &message );
-  int parse_header( void *cookie, string &header );
-  int parse_out_pairs( void *cookie, string &remainder, map <string, string> &parms );
-  int parse_message( int fd, void *cookie, string &message );
+  int read_header( int fd, map <string, string> *cookie, string &header, string &message );
+  int parse_header( map <string, string> *cookie, string &header );
+  int parse_out_pairs( map <string, string> *cookie, string &remainder, map <string, string> &parms );
+  int parse_message( int fd, map <string, string> *cookie, string &message );
   void out_buffer_clear(void);
 
 public:
-
+  int parse_cookie(map <string, string> *cookie, string &cookie_string);
 
   /****************************************************************
    Constructor: ehttp
@@ -602,7 +601,7 @@ public:
    close(connect_d);
    }
    */
-  int parse_request( int fd, void *cookie );
+  int parse_request( int fd, map <string, string> *cookie );
 
 
   /****************************************************************
@@ -651,7 +650,7 @@ public:
 
 
    */
-  void add_handler( char *filename, int (*pHandler)(ehttp &obj, void *cookie));
+  void add_handler( char *filename, int (*pHandler)(ehttp &obj, map <string, string> *cookie));
 
 
   /****************************************************************
@@ -670,8 +669,7 @@ public:
    browser type in every request handler function
 
    */
-  void set_prerequest_handler( void (*pHandler)(ehttp &obj, void *cookie));
-
+  void set_prerequest_handler( void (*pHandler)(ehttp &obj, map <string, string> *cookie));
 
   /****************************************************************
    Member Function:
@@ -739,9 +737,8 @@ public:
    len-  size of the buffer
    cookie-  cookie passed in the parse_request function. For your own use.
    */
-  void setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len, void *cookie) );
-  void setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len, void *cookie) );
-
+  void setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len, map<string, string> *cookie) );
+  void setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len, map<string, string> *cookie) );
 };
 
 

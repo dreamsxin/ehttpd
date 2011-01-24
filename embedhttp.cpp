@@ -40,15 +40,16 @@
 
 
 #include "./embedhttp.h"
+#include <assert.h>
 
 #define  dprintf printf
 
 
-ssize_t ehttpRecv(void *fd, void *buf, size_t len, void *cookie) {
+ssize_t ehttpRecv(void *fd, void *buf, size_t len, map <string, string> *cookie) {
   return recv((int)fd,buf,len,0);
 }
 
-ssize_t ehttpSend(void *fd, const void *buf, size_t len, void *cookie) {
+ssize_t ehttpSend(void *fd, const void *buf, size_t len, map <string, string> *cookie) {
   return send((int)fd,buf,len,0);
 }
 
@@ -278,19 +279,18 @@ int ehttp::init( void ) {
 }
 
 
-void ehttp::add_handler( char *filename, int (*pHandler)(ehttp &obj, void *cookie)) {
+void ehttp::add_handler( char *filename, int (*pHandler)(ehttp &obj, map <string, string> *cookie)) {
   if( !filename )
     pDefaultHandler=pHandler;
   else
     handler_map[filename]=pHandler;
 }
 
-void ehttp::set_prerequest_handler( void (*pHandler)(ehttp &obj, void *cookie)) {
+void ehttp::set_prerequest_handler( void (*pHandler)(ehttp &obj, map <string, string> *cookie)) {
   pPreRequestHandler=pHandler;
 }
 
-
-int ehttp:: read_header( int fd, void *cookie, string &header, string &message ) {
+int ehttp:: read_header( int fd, map <string, string> *cookie, string &header, string &message ) {
   header="";
   unsigned int offset=0;
   while((offset=header.find("\r\n\r\n"))==string::npos ) {
@@ -315,7 +315,7 @@ int ehttp:: read_header( int fd, void *cookie, string &header, string &message )
 }
 
 
-int ehttp::parse_out_pairs(void *cookie, string &remainder, map <string, string> &parms) {
+int ehttp::parse_out_pairs(map <string, string> *cookie, string &remainder, map <string, string> &parms) {
   string id;
   string value;
   int state=0;
@@ -362,7 +362,9 @@ int ehttp::parse_out_pairs(void *cookie, string &remainder, map <string, string>
 }
 
 
-int ehttp::parse_header(void *cookie, string &header) {
+int ehttp::parse_header(map<string, string> *cookie, string &header) {
+  assert(cookie != NULL);
+
   char *request=NULL;
   char *request_end=NULL;
   const char *pHeader=header.c_str();
@@ -454,7 +456,7 @@ int ehttp::parse_header(void *cookie, string &header) {
       }
       // read in the value
       if (valueend) {
-        while (request_end < valueend) {
+	while (request_end < valueend) {
           value+=*request_end++;
         }
         //add key value pair to map
@@ -471,11 +473,24 @@ int ehttp::parse_header(void *cookie, string &header) {
     }
   }
   // Parse Cookie
-  string cookie_string = request_header["Cookie"];
+  int ret = parse_cookie(cookie, request_header["Cookie"]);
+  if (ret != EHTTP_ERR_OK) {
+    return ret;
+  }
+  
+  //  map<string, string>::iterator it;
+  //  for (it=((map<string, string> *)cookie)->begin() ; it != ((map<string, string> *)cookie)->end(); ++it) {
+  //    dprintf("CookieParsing; %s : %s\r\n",(*it).first.c_str(), (*it).second.c_str());
+  //    cout<<(*it).first << (*it).second <<endl;
+  //  }
+  
+  // Find content length
+  contentlength=atoi (request_header["CONTENT-LENGTH"].c_str());
+  return EHTTP_ERR_OK;		
+}
 
-  map<string, string>* cookie_map = (map<string, string>*)cookie;
-  cookie_map = new map<string, string>();
-  cookie_map->clear();
+int ehttp::parse_cookie(map <string, string> *cookie, string &cookie_string) {
+  cookie->clear();
 
   string delimiters = " =;";
   string::size_type lastPos = cookie_string.find_first_not_of(delimiters, 0);
@@ -491,21 +506,11 @@ int ehttp::parse_header(void *cookie, string &header) {
     string value = cookie_string.substr(lastPos, pos - lastPos);
     lastPos = cookie_string.find_first_not_of(delimiters, pos);
     pos = cookie_string.find_first_of(delimiters, lastPos);
-    (*cookie_map)[key] = value;
+    (*cookie)[key] = value;
   }
-
-  map<string, string>::iterator it;
-  for (it=cookie_map->begin() ; it != cookie_map->end(); ++it) {
-    dprintf("CookieParsing; %s : %s\r\n",(*it).first.c_str(), (*it).second.c_str());
-    //    cout<<(*it).first << (*it).second <<endl;
-  }
-
-  // Find content length
-  contentlength=atoi (request_header["CONTENT-LENGTH"].c_str());
-  return EHTTP_ERR_OK;
+  return EHTTP_ERR_OK;		
 }
-
-int ehttp:: parse_message( int fd, void *cookie, string &message ) {
+int ehttp:: parse_message( int fd, map <string, string> *cookie, string &message ) {
   if( !contentlength ) return EHTTP_ERR_OK;
 
   dprintf("Parsed content length:%d\r\n",contentlength);
@@ -543,8 +548,8 @@ int ehttp:: parse_message( int fd, void *cookie, string &message ) {
 }
 
 
-int ehttp::parse_request( int fd, void *cookie ) {
-  int (*pHandler)(ehttp &obj, void *cookie)=NULL;
+int ehttp::parse_request( int fd, map <string, string> *cookie ) {
+  int (*pHandler)(ehttp &obj, map <string, string> *cookie)=NULL;
 
   /* Things in the object which must be reset for each request */
   filename="";
@@ -601,15 +606,14 @@ int ehttp::parse_request( int fd, void *cookie ) {
   return EHTTP_ERR_GENERIC;
 }
 
-
-void ehttp::setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len, void *cookie) ) {
+void ehttp::setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len, map<string, string> *cookie) ) {
   if( pS )
     pSend=pS;
   else
     pSend=ehttpSend;
 }
 
-void ehttp::setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len, void *cookie) ) {
+void ehttp::setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len, map<string, string> *cookie) ) {
   if( pR )
     pRecv=pR;
   else
