@@ -1,42 +1,42 @@
 /********************************************************************
 
-EhttpD - EasyHTTP Server/Parser C++ Class
+ EhttpD - EasyHTTP Server/Parser C++ Class
 
-http://www.littletux.com
+ http://www.littletux.com
 
-Copyright (c) 2007, Barry Sprajc
+ Copyright (c) 2007, Barry Sprajc
 
-All rights reserved.
+ All rights reserved.
 
-Redistribution and use in source and binary forms, with or without  
-modification, are permitted provided that the following conditions  
-are met:
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
 
-Redistributions of source code must retain the above copyright 
-notice, this list of conditions and the following disclaimer. 
+ Redistributions of source code must retain the above copyright
+ notice, this list of conditions and the following disclaimer.
 
-Redistributions in binary form must reproduce the above copyright 
-notice, this list of conditions and the following disclaimer in the 
-documentation and/or other materials provided with the distribution.
+ Redistributions in binary form must reproduce the above copyright
+ notice, this list of conditions and the following disclaimer in the
+ documentation and/or other materials provided with the distribution.
 
-Neither the name of Littletux.com nor the names of its contributors 
-may be used to endorse or promote products derived from this 
-software without specific prior written permission. 
+ Neither the name of Littletux.com nor the names of its contributors
+ may be used to endorse or promote products derived from this
+ software without specific prior written permission.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
-SPECIAL,EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON 
-ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR 
-TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF 
-THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH 
-DAMAGE.
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL,EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+ TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
+ THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+ DAMAGE.
 
-********************************************************************/
+ ********************************************************************/
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -56,11 +56,11 @@ DAMAGE.
 using namespace std;
 
 enum{
-	EHTTP_ERR_GENERIC=-1,EHTTP_ERR_OK,EHTTP_ERR_CONNECTLOST,EHTTP_ERR_APP,
-	EHTTP_ERR_REGEX,
-	EHTTP_HDR_NOTHING, EHTTP_HDR_OK,EHTTP_BINARY_FILE,EHTTP_TEXT_FILE,	
-	EHTTP_REQUEST_GET, EHTTP_REQUEST_POST,EHTTP_LENGTH_REQUIRED
-	};
+  EHTTP_ERR_GENERIC=-1,EHTTP_ERR_OK,EHTTP_ERR_CONNECTLOST,EHTTP_ERR_APP,
+  EHTTP_ERR_REGEX,
+  EHTTP_HDR_NOTHING, EHTTP_HDR_OK,EHTTP_BINARY_FILE,EHTTP_TEXT_FILE,
+  EHTTP_REQUEST_GET, EHTTP_REQUEST_POST,EHTTP_LENGTH_REQUIRED
+};
 
 
 
@@ -69,681 +69,679 @@ ssize_t ehttpSend(void *ctx, const void *buf, size_t len, void *cookie);
 
 
 
-#define INPUT_BUFFER_SIZE	10240
+#define INPUT_BUFFER_SIZE  10240
 
-/* 
-	Class: ehttp
-	EasyHTTPD Parser Class
-*/
+/*
+ Class: ehttp
+ EasyHTTPD Parser Class
+ */
 
 class ehttp
 {
-	char input_buffer[INPUT_BUFFER_SIZE];
+  char input_buffer[INPUT_BUFFER_SIZE];
 
-	void *ptheCookie;
+  void *ptheCookie;
 
-	int localFD;
-	int filetype;
-	int requesttype;
-	unsigned int contentlength;
+  int localFD;
+  int filetype;
+  int requesttype;
+  unsigned int contentlength;
 
-	string filename;						//filename of the url
-	string url;								//the url
-	string outfilename;						//template filename
-	string outbuffer;						//response output buffer
-
-
-
-	map <string, string> url_parms;
-	map <string, string> post_parms;
-	map <string, string> request_header;
-	map <string, string> replace_token;
-	map <string, string> response_header;
-
-	map <string, int (*)(ehttp &obj, void *cookie)> handler_map;
-	int (*pDefaultHandler)(ehttp &obj, void *cookie);
-	void (*pPreRequestHandler)(ehttp &obj, void *cookie);
-
-	ssize_t (*pRecv)(void *ctx, void *buf, size_t len, void *cookie);
-	ssize_t (*pSend)(void *ctx, const void *buf, size_t len, void *cookie);
+  string filename;            //filename of the url
+  string url;                //the url
+  string outfilename;            //template filename
+  string outbuffer;            //response output buffer
 
 
-	int read_header( int fd, void *cookie, string &header, string &message );
-	int parse_header( void *cookie, string &header );
-	int parse_out_pairs( void *cookie, string &remainder, map <string, string> &parms );
-	int parse_message( int fd, void *cookie, string &message );
-	void out_buffer_clear(void);
-	
+
+  map <string, string> url_parms;
+  map <string, string> post_parms;
+  map <string, string> request_header;
+  map <string, string> replace_token;
+  map <string, string> response_header;
+
+  map <string, int (*)(ehttp &obj, void *cookie)> handler_map;
+  int (*pDefaultHandler)(ehttp &obj, void *cookie);
+  void (*pPreRequestHandler)(ehttp &obj, void *cookie);
+
+  ssize_t (*pRecv)(void *ctx, void *buf, size_t len, void *cookie);
+  ssize_t (*pSend)(void *ctx, const void *buf, size_t len, void *cookie);
+
+
+  int read_header( int fd, void *cookie, string &header, string &message );
+  int parse_header( void *cookie, string &header );
+  int parse_out_pairs( void *cookie, string &remainder, map <string, string> &parms );
+  int parse_message( int fd, void *cookie, string &message );
+  void out_buffer_clear(void);
+
 public:
-	
 
-	/****************************************************************
-	Constructor: ehttp
-	Does nothing exciting, use init() to initalize the class 
-	instantiation
-	*/
-	ehttp(){};
 
-	/*
-	Destructor: ehttp
-	Does nothing exciting.
-	*/
-	~ehttp(){};
+  /****************************************************************
+   Constructor: ehttp
+   Does nothing exciting, use init() to initalize the class
+   instantiation
+   */
+  ehttp(){};
 
-	/****************************************************************
-	Member Function: int init( void );
+  /*
+   Destructor: ehttp
+   Does nothing exciting.
+   */
+  ~ehttp(){};
 
-	Usage:	
-		Initalizes the class instantiation
+  /****************************************************************
+   Member Function: int init( void );
 
-	Parameters: 
-		none
+   Usage:
+   Initalizes the class instantiation
 
-	Returns: 
-		EHTTP_ERR_OK		Initalization OK
-		EHTTP_ERR_REGEX		Error compiling internal regular 
-							expression
-	*/
-	int init( void );
+   Parameters:
+   none
 
+   Returns:
+   EHTTP_ERR_OK    Initalization OK
+   EHTTP_ERR_REGEX    Error compiling internal regular
+   expression
+   */
+  int init( void );
 
 
-	/****************************************************************
-	Member Function: 
-		int getRequestType(void);
-		int isGetRequest();
-		int isPostRequest();
-		
 
-	Usage:	
-		Indicates what type of request is being made
+  /****************************************************************
+   Member Function:
+   int getRequestType(void);
+   int isGetRequest();
+   int isPostRequest();
 
-	Parameters: 
-		none
 
-	Returns: 
-		EHTTP_REQUEST_GET		HTTP Get request
-		EHTTP_REQUEST_POST		HTTP Post request
+   Usage:
+   Indicates what type of request is being made
 
+   Parameters:
+   none
 
-	*/
-	int getRequestType(void);
-	bool isGetRequest(void);
-	bool isPostRequest(void);
+   Returns:
+   EHTTP_REQUEST_GET    HTTP Get request
+   EHTTP_REQUEST_POST    HTTP Post request
 
 
-	/****************************************************************
-	Member Function: 
-		string &getURL(void);
+   */
+  int getRequestType(void);
+  bool isGetRequest(void);
+  bool isPostRequest(void);
 
-	Usage:	
-		Get string reference to the complete URL requested.
-		For use inside a user defined ehttp request handler
 
-	Parameters: 
-		none
+  /****************************************************************
+   Member Function:
+   string &getURL(void);
 
-	Returns:
-		Return reference to the URL requested.
-		URL is considered to be the filename requested plus any
-		parameters that follow.  
+   Usage:
+   Get string reference to the complete URL requested.
+   For use inside a user defined ehttp request handler
 
-	Example: 
+   Parameters:
+   none
 
-		http://localhost/doit.html?CMD=DELETE
+   Returns:
+   Return reference to the URL requested.
+   URL is considered to be the filename requested plus any
+   parameters that follow.
 
-		string reference contains /doit.html?CMD=DELETE
-		
-		Filename is 'localhost', CMD is a parameter, and DELETE is the 
-		value of CMD
-	
-	*/
-	string &getURL(void);
-	
-	/****************************************************************
-	Member Function: 
-		string &getFilename( void );
+   Example:
 
-	Usage:	
-		Get string reference to the URL filename requested.
-		For use inside a user defined ehttp request handler
+   http://localhost/doit.html?CMD=DELETE
 
-	Parameters: 
-		none
+   string reference contains /doit.html?CMD=DELETE
 
-	Returns:
-		Return reference to the filename requested.
+   Filename is 'localhost', CMD is a parameter, and DELETE is the
+   value of CMD
 
-	Example: 
+   */
+  string &getURL(void);
 
-		http://localhost/doit.html?CMD=DELETE
+  /****************************************************************
+   Member Function:
+   string &getFilename( void );
 
-		string reference contains /doit.html
-		
-		Filename is 'doit.html', CMD is a parameter, and DELETE is the value of CMD
-	
-	*/
-	string &getFilename( void );
-	
+   Usage:
+   Get string reference to the URL filename requested.
+   For use inside a user defined ehttp request handler
 
-	/****************************************************************
-	Member Function: 
-		string getUrlParam(char *key);
+   Parameters:
+   none
 
-	Usage:	
-		Return the value of a parameter passed in URL (request)
+   Returns:
+   Return reference to the filename requested.
 
-		For use inside a user defined ehttp request handler
+   Example:
 
-	Parameters: 
-		char * string, name of URL parameter to retrieve
+   http://localhost/doit.html?CMD=DELETE
 
-	Returns:
-		A copy of the parameter value as a STL string object
+   string reference contains /doit.html
 
-	Example: 
+   Filename is 'doit.html', CMD is a parameter, and DELETE is the value of CMD
 
-		http://localhost/doit.html?CMD=DELETE&FILE=foo.txt
-		
-		string cmd=ehttp_obj.getUrlParam("CMD");
-		string val=ehttp_obj.getUrlParam("FILE");
+   */
+  string &getFilename( void );
 
-		cmd contains "DELETE" and val contains "foo.txt"
-		
-	
-	*/	
-	string getUrlParam(char *key);
 
+  /****************************************************************
+   Member Function:
+   string getUrlParam(char *key);
 
-	/****************************************************************
-	Member Function: 
-		string getPostParam(char *key);
+   Usage:
+   Return the value of a parameter passed in URL (request)
 
-	Usage:	
-		Return the value of a POST (form) parameter returned by the 
-		browser as part of a POST request
+   For use inside a user defined ehttp request handler
 
-		For use inside a user defined ehttp request handler
+   Parameters:
+   char * string, name of URL parameter to retrieve
 
+   Returns:
+   A copy of the parameter value as a STL string object
 
-	Parameters: 
-		char * string, name of parameter/name of form control to 
-		retrieve
+   Example:
 
-	Returns:
-		A copy of the parameter value as a STL string object
+   http://localhost/doit.html?CMD=DELETE&FILE=foo.txt
 
-	Example: 
+   string cmd=ehttp_obj.getUrlParam("CMD");
+   string val=ehttp_obj.getUrlParam("FILE");
 
-		http://localhost/postit.html
-		
-		string firstname=ehttp_obj.getPostParam("full_name");
-		string button=ehttp_obj.getPostParam("submit");
+   cmd contains "DELETE" and val contains "foo.txt"
 
-		<input size="40" type="text" name="full_name"</input>
 
-		firstname contains the text of the text control named full_name
-	*/		
-	string getPostParam(char *key);
+   */
+  string getUrlParam(char *key);
 
 
+  /****************************************************************
+   Member Function:
+   string getPostParam(char *key);
 
-	/****************************************************************
-	Member Function: 
-		map <string, string> getPostParams( void );
-		map <string, string> getUrlParams( void );
+   Usage:
+   Return the value of a POST (form) parameter returned by the
+   browser as part of a POST request
 
-	Usage:	
-		Get a map <string, string> of all GET/POST values, where each
-		element in the list, first string object is the name of the
-		parameter/form control name and the second string object is
-		the value of that parameter.
+   For use inside a user defined ehttp request handler
 
-		It's usefullness come in where you for example, have an HTML
-		form with a bunch of checkboxes, but only a subset of those
-		boxes have been checked by the user.  The browser will only
-		post the values of those boxes which were checked.
 
-		You can itterate through the list, to know which boxes
-		were checked.
+   Parameters:
+   char * string, name of parameter/name of form control to
+   retrieve
 
-		For use inside a user defined ehttp request handler
+   Returns:
+   A copy of the parameter value as a STL string object
 
+   Example:
 
-	Parameters: 
-		Reference to a map <string, string> object.
+   http://localhost/postit.html
 
-	
-	Returns:
-		nothing
+   string firstname=ehttp_obj.getPostParam("full_name");
+   string button=ehttp_obj.getPostParam("submit");
 
-	Example: 
+   <input size="40" type="text" name="full_name"</input>
 
-		map <string, string> parms;
-		map<string,string>::const_iterator iter;
+   firstname contains the text of the text control named full_name
+   */
+  string getPostParam(char *key);
 
-		// Print out all the checkbox names
-		getPostParms(parms);
-		iter=parms.begin();
-		while( iter != parms.end() )
-			{
-			cout << iter->first->data()<< iter->second->data() << "\r\n";
-			++iter;
-			}
-		
-	*/
-	map <string, string> & getPostParams( void );
-	map <string, string> & getUrlParams( void );
 
 
-	/****************************************************************
-	Member Function: 
-		void out_replace_token( string tok, string val );
+  /****************************************************************
+   Member Function:
+   map <string, string> getPostParams( void );
+   map <string, string> getUrlParams( void );
 
-	Usage:	
-		Used to replace a named token inside an HTML template value
-		with a string.
+   Usage:
+   Get a map <string, string> of all GET/POST values, where each
+   element in the list, first string object is the name of the
+   parameter/form control name and the second string object is
+   the value of that parameter.
 
-		Each call to this function adds the token and string to 
-		a list.  The token replacments occur when out_replace()
-		is called
+   It's usefullness come in where you for example, have an HTML
+   form with a bunch of checkboxes, but only a subset of those
+   boxes have been checked by the user.  The browser will only
+   post the values of those boxes which were checked.
 
-		Used for dynamic content generation.
-		
-		For use inside a user defined ehttp request handler
+   You can itterate through the list, to know which boxes
+   were checked.
 
+   For use inside a user defined ehttp request handler
 
-	Parameters: 
-		tok -	Name of token to be replaced
-		val	-	Content to replace the token with
 
-	
-	Returns:
-		nothing
+   Parameters:
+   Reference to a map <string, string> object.
 
-	Example: 
 
-		Part of template file:
-			<TITLE>This is ##NAME##'s Website</TITLE>
+   Returns:
+   nothing
 
-		obj.out_replace_token( "NAME", "Billy Bob" );
-		obj.out_replace_token( "OCCUPATION", "Engineer" );
-		obj.out_replace();
-		obj.out_commit();
+   Example:
 
-		Will render <TITLE>This is Billy Bob's Website</TITLE>
-		on out_commit();
-		
-	*/
-	void out_replace_token( string tok, string val );
+   map <string, string> parms;
+   map<string,string>::const_iterator iter;
 
-	/****************************************************************
-	Member Function: 
-		void out_set_file( char *fname, int ftype=EHTTP_TEXT_FILE);
-		void out_set_file( string &fname, int ftype=EHTTP_TEXT_FILE);
+   // Print out all the checkbox names
+   getPostParms(parms);
+   iter=parms.begin();
+   while( iter != parms.end() )
+   {
+   cout << iter->first->data()<< iter->second->data() << "\r\n";
+   ++iter;
+   }
 
+   */
+  map <string, string> & getPostParams( void );
+  map <string, string> & getUrlParams( void );
 
-	Usage:	
-		Specifies the filename of the local html template.
-		
-		Used for dynamic content generation.
-		
-		For use inside a user defined ehttp request handler
 
+  /****************************************************************
+   Member Function:
+   void out_replace_token( string tok, string val );
 
-	Parameters: 
-		fname -	Name of the local HTML template file
-		ftype-	EHTTP_TEXT_FILE (default)
-				EHTTP_BINARY_FILE
+   Usage:
+   Used to replace a named token inside an HTML template value
+   with a string.
 
-		If ftype is EHTTP_BINARY_FILE, then the file is written
-		to the browser as is, with no token replacement, on 
-		out_commit()
+   Each call to this function adds the token and string to
+   a list.  The token replacments occur when out_replace()
+   is called
 
-	
-	Returns:
-		nothing
+   Used for dynamic content generation.
 
-	Example: 
+   For use inside a user defined ehttp request handler
 
-		obj.out_set_file("./status.html");
-		obj.out_replace_token( "STATUS", "[S]ituation [N]ormal AFU" );
-		obj.out_replace();
-		obj.out_commit();
-	
-	*/
-	void out_set_file( char *fname, int ftype=EHTTP_TEXT_FILE);
-	void out_set_file( string &fname, int ftype=EHTTP_TEXT_FILE);
 
-	/****************************************************************
-	Member Function: 
-		void out_write_str( char *str );
-		void out_write_str( string &str );
+   Parameters:
+   tok -  Name of token to be replaced
+   val  -  Content to replace the token with
 
 
-	Usage:	
-		Writes a string directly to the output buffer.
+   Returns:
+   nothing
 
-		The output buffer is empty when the handler is entered.
-		Calls to these functions append to the output buffer.
-		The function out_replace() appends to the output buffer,
-		so this function may be called before or after, if at all
-		out_replace.
+   Example:
 
-	Parameters: 
-		str	- String to append to the output buffer
-		
-	
-	Returns:
-		nothing
+   Part of template file:
+   <TITLE>This is ##NAME##'s Website</TITLE>
 
-	Example: 
-		obj.out_write_str("HTTP/1.0 400 Bad Request\r\n\r\n");
-		obj.out_commit(EHTTP_HDR_NOTHING);
-	
-	*/
-	void out_write_str( char *str );
-	void out_write_str( string &str );
-	
+   obj.out_replace_token( "NAME", "Billy Bob" );
+   obj.out_replace_token( "OCCUPATION", "Engineer" );
+   obj.out_replace();
+   obj.out_commit();
 
-	/****************************************************************
-	Member Function: 
-		int out_replace(void);
+   Will render <TITLE>This is Billy Bob's Website</TITLE>
+   on out_commit();
 
+   */
+  void out_replace_token( string tok, string val );
 
-	Usage:	
+  /****************************************************************
+   Member Function:
+   void out_set_file( char *fname, int ftype=EHTTP_TEXT_FILE);
+   void out_set_file( string &fname, int ftype=EHTTP_TEXT_FILE);
 
-		In short, read the template file specified with out_set_file,
-		and replace tokens found in the file with tokens found in the
-		internal list, where the internal list was populated via 
-		calls to out_replace_token
 
-		Causes the output buffer to be filled or appended to.
+   Usage:
+   Specifies the filename of the local html template.
 
-	Parameters: 
-		none
-		
-	
-	Returns:
-		nothing
+   Used for dynamic content generation.
 
-	Example: 
-		obj.out_set_file("./status.html");
-		obj.out_replace_token( "STATUS", "[S]ituation [N]ormal AFU" );
+   For use inside a user defined ehttp request handler
 
-		obj.out_replace();		// Replace ##STATUS## in status.html
-								// with the SNAFU string
 
-		obj.out_commit();		// Write the content to the client
-	*/	
-	int out_replace(void);
+   Parameters:
+   fname -  Name of the local HTML template file
+   ftype-  EHTTP_TEXT_FILE (default)
+   EHTTP_BINARY_FILE
 
+   If ftype is EHTTP_BINARY_FILE, then the file is written
+   to the browser as is, with no token replacement, on
+   out_commit()
 
-	/****************************************************************
-	Member Function: 
-		int out_commit_binary(void);
 
+   Returns:
+   nothing
 
-	Usage:	
-		Write the file specified by out_set_file() directly to the 
-		connected socket, with no translation.
+   Example:
 
-		If out_set_file is called with the ftype as EHTTP_BINARY_FILE,
-		then this function is called automatically via out_commit();
-		
-	Parameters: 
-		none
-		
-	
-	Returns:
-		EHTTP_ERR_OK - no error
+   obj.out_set_file("./status.html");
+   obj.out_replace_token( "STATUS", "[S]ituation [N]ormal AFU" );
+   obj.out_replace();
+   obj.out_commit();
 
-		or returns the error code from the TCP socket we tried
-		to write to
+   */
+  void out_set_file( char *fname, int ftype=EHTTP_TEXT_FILE);
+  void out_set_file( string &fname, int ftype=EHTTP_TEXT_FILE);
 
-	Example: 
-		obj.out_set_file("./status.html");
-		obj.out_replace_token( "STATUS", "[S]ituation [N]ormal AFU" );
+  /****************************************************************
+   Member Function:
+   void out_write_str( char *str );
+   void out_write_str( string &str );
 
-		obj.out_replace();		// Replace ##STATUS## in status.html
-								// with the SNAFU string
 
-		obj.out_commit();		// Write the content to the client
-	*/	
-	int out_commit_binary(void);
+   Usage:
+   Writes a string directly to the output buffer.
 
+   The output buffer is empty when the handler is entered.
+   Calls to these functions append to the output buffer.
+   The function out_replace() appends to the output buffer,
+   so this function may be called before or after, if at all
+   out_replace.
 
-	/****************************************************************
-	Member Function: 
-		int out_commit(int header=EHTTP_HDR_OK);
+   Parameters:
+   str  - String to append to the output buffer
 
 
-	Usage:	
-		Writes the output buffer to the connected socket.
+   Returns:
+   nothing
 
-		The is the last member function to be called when sending the
-		response from the handler function.
-		
-	Parameters: 
-		header - 
-			EHTTP_HDR_OK  
-				Prepends the response with HTTP 200 OK header
-				
-			Other values are for class internal use.
-		
-	
-	Returns:
-		EHTTP_ERR_OK - no error
+   Example:
+   obj.out_write_str("HTTP/1.0 400 Bad Request\r\n\r\n");
+   obj.out_commit(EHTTP_HDR_NOTHING);
 
-		or returns the error code from the TCP socket we tried
-		to write to
+   */
+  void out_write_str( char *str );
+  void out_write_str( string &str );
 
-	Example: 
-		obj.out_set_file("./status.html");
-		obj.out_replace_token( "STATUS", "[S]ituation [N]ormal AFU" );
 
-		obj.out_replace();		// Replace ##STATUS## in status.html
-								// with the SNAFU string
+  /****************************************************************
+   Member Function:
+   int out_replace(void);
 
-		obj.out_commit();		// Write the content to the client
-	*/	
-	int out_commit(int header=EHTTP_HDR_OK);
 
+   Usage:
 
-	/****************************************************************
-	Member Function: 
-		int parse_request( int fd, void *cookie );
+   In short, read the template file specified with out_set_file,
+   and replace tokens found in the file with tokens found in the
+   internal list, where the internal list was populated via
+   calls to out_replace_token
 
+   Causes the output buffer to be filled or appended to.
 
-	Usage:	
-		Read in an HTTP request from a connected socket and ultimatly
-		write out the response to the connected socket, usually through
-		one of the handler function
-		
-	Parameters: 
-		fd - 	TCP socket from which we accepted a connection
+   Parameters:
+   none
 
-		cookie -This value is passed directly to the handler functions,
-				and its intended use is to provide a link/pointer between
-				the request handler and the application.
 
-	
-	Returns:
-		EHTTP_ERR_OK - 
-			no error, usually returned from the request handler
-			
-		EHTTP_LENGTH_REQUIRED -
-			Parser got a post request, but there was no Content-Lengh in 
-			the header send by the browser.
+   Returns:
+   nothing
 
-		EHTTP_ERR_GENERIC -
-			Could not parse the request.
+   Example:
+   obj.out_set_file("./status.html");
+   obj.out_replace_token( "STATUS", "[S]ituation [N]ormal AFU" );
 
-		The request handler could return anything it wants, but it should
-		return the value from out_commit();
+   obj.out_replace();    // Replace ##STATUS## in status.html
+   // with the SNAFU string
 
+   obj.out_commit();    // Write the content to the client
+   */
+  int out_replace(void);
 
-	Example: 
-		ehttp	httpd;
-		MyApp	app;
-		app.runInThread();
-		httpd.init();
-		while( 1 )
-			{
-			fromlen = sizeof(struct sockaddr);
-		   	if ( (connect_d = accept(sd, (struct sockaddr *) &fsin, (socklen_t*)&fromlen)) < 0)
-				{
-				fprintf(stderr, "HTTPD:Can't accept....exiting\n");
-				close(sd);
-				exit(1);
-				}
 
-			httpd.parse_request(connect_d, (void)&app);
-			close(connect_d);
-			}
-	*/		
-	int parse_request( int fd, void *cookie );
+  /****************************************************************
+   Member Function:
+   int out_commit_binary(void);
 
 
-	/****************************************************************
-	Member Function: 
-		void add_handler( char *filename, int 
-			(*pHandler)(ehttp &obj, void *cookie));
+   Usage:
+   Write the file specified by out_set_file() directly to the
+   connected socket, with no translation.
 
+   If out_set_file is called with the ftype as EHTTP_BINARY_FILE,
+   then this function is called automatically via out_commit();
 
-	Usage:	
-		Add a request handler function to the ehttp parser instance
-		
+   Parameters:
+   none
 
-	Parameters: 
-		filename - 	Name of URL file to handle (index.html for example)
-		pHandler -	Pointer to handler funciton, with reference to the
-					ehttp instance, and a void pointer (pointer to app)
-		
-	
-	Returns:
-		nothing
-		
 
-	Example: 
+   Returns:
+   EHTTP_ERR_OK - no error
 
-	// Handler: diagreport.html
-	int handleDiagReport( ehttp &obj , void *cookie )
-	{
-		AppToGUI &app=CookieToApp(cookie);
+   or returns the error code from the TCP socket we tried
+   to write to
 
-		// Load the template, replace the tokens 
-		obj.out_set_file(obj."diagreport.html");	
-		obj.out_replace_token("CONTENT",app.getDiagCounterReport());
+   Example:
+   obj.out_set_file("./status.html");
+   obj.out_replace_token( "STATUS", "[S]ituation [N]ormal AFU" );
 
-		// write the steam and finish connectoin 
-		obj.out_replace();
-		return obj.out_commit();
-	}
+   obj.out_replace();    // Replace ##STATUS## in status.html
+   // with the SNAFU string
 
-	
-	ehttp	httpd;
-	MyApp	app;
-	...
-	obj.add_handler("/", handleIndex );
-	obj.add_handler("/index.html", handleIndex );
-	obj.add_handler("/diagreport.html", handleDiagReport);
+   obj.out_commit();    // Write the content to the client
+   */
+  int out_commit_binary(void);
 
-	
-	*/			
-	void add_handler( char *filename, int (*pHandler)(ehttp &obj, void *cookie));
 
+  /****************************************************************
+   Member Function:
+   int out_commit(int header=EHTTP_HDR_OK);
 
-	/****************************************************************
-	Member Function: 
-		void set_prerequest_handler( void (*pHandler)(ehttp &obj, void *cookie));
 
-	Usage:
-		Sets a handler function to be called for all specified requests handlers
-		before the specific request handler get called.
+   Usage:
+   Writes the output buffer to the connected socket.
 
-		It's purpose is to allow action to be taken globally which effects all
-		requests handlers.
+   The is the last member function to be called when sending the
+   response from the handler function.
 
-		As an example, you might want to update a path to HTML files depending
-		on the type of browser used.  This way you would not need to check the
-		browser type in every request handler function
+   Parameters:
+   header -
+   EHTTP_HDR_OK
+   Prepends the response with HTTP 200 OK header
 
-	*/
-	void set_prerequest_handler( void (*pHandler)(ehttp &obj, void *cookie));
+   Other values are for class internal use.
 
 
-	/****************************************************************
-	Member Function: 
-		map <string, string> & getRequestHeaders( void );
+   Returns:
+   EHTTP_ERR_OK - no error
 
-	Usage:
-		Returns reference to a  map of the parsed out headers sent by the client.
+   or returns the error code from the TCP socket we tried
+   to write to
 
-		This is used to get the value a header.
+   Example:
+   obj.out_set_file("./status.html");
+   obj.out_replace_token( "STATUS", "[S]ituation [N]ormal AFU" );
 
-	Example:
-		string cookie=getRequestHeaders()["User-Agent"];
-		
-	*/
-	map <string, string> & getRequestHeaders( void );
+   obj.out_replace();    // Replace ##STATUS## in status.html
+   // with the SNAFU string
 
+   obj.out_commit();    // Write the content to the client
+   */
+  int out_commit(int header=EHTTP_HDR_OK);
 
-	/****************************************************************
-	Member Function: 
-		string getRequestHeader(char *key);
 
-	Usage:
-		Returns the value of a specific header as a string
+  /****************************************************************
+   Member Function:
+   int parse_request( int fd, void *cookie );
 
 
-	Example:
-		int timeout=atol( getReqeustHeader("Keep-Alive").c_str() );
-	*/
-	string getRequestHeader(char *key);	
+   Usage:
+   Read in an HTTP request from a connected socket and ultimatly
+   write out the response to the connected socket, usually through
+   one of the handler function
 
-	/****************************************************************
-	Member Function: 
-		map <string, string> & getResponseHeader( void );
+   Parameters:
+   fd -   TCP socket from which we accepted a connection
 
-	Usage:
-		Returns reference to a map of header to send back to the client.
+   cookie -This value is passed directly to the handler functions,
+   and its intended use is to provide a link/pointer between
+   the request handler and the application.
 
-		Used to send a header to the client.
 
-	Exampe:
-		getResponseHeader()['Set-Cookie']="USERID=42; path=/index.html;"
+   Returns:
+   EHTTP_ERR_OK -
+   no error, usually returned from the request handler
 
-		
-	*/
-	map <string, string> & getResponseHeader( void );
+   EHTTP_LENGTH_REQUIRED -
+   Parser got a post request, but there was no Content-Lengh in
+   the header send by the browser.
 
+   EHTTP_ERR_GENERIC -
+   Could not parse the request.
 
-	/****************************************************************
-	Member Function: 
-		void setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len, void *cookie) );
-		void setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len, void *cookie) );		
+   The request handler could return anything it wants, but it should
+   return the value from out_commit();
 
 
-	Usage:
-		Used to specify alternate I/O functions, where the defaults are
-		send() and recv().
+   Example:
+   ehttp  httpd;
+   MyApp  app;
+   app.runInThread();
+   httpd.init();
+   while( 1 )
+   {
+   fromlen = sizeof(struct sockaddr);
+   if ( (connect_d = accept(sd, (struct sockaddr *) &fsin, (socklen_t*)&fromlen)) < 0)
+   {
+   fprintf(stderr, "HTTPD:Can't accept....exiting\n");
+   close(sd);
+   exit(1);
+   }
 
-		The intention is to allow the use of SSL, which has its own stream functions.
+   httpd.parse_request(connect_d, (void)&app);
+   close(connect_d);
+   }
+   */
+  int parse_request( int fd, void *cookie );
 
-		See 'hellowworldssl.cpp' for a detailed example of usage.
 
-	Paramters:
-		fd - 	fd(socket), just like send() and recv()
-		buf-	pointer to input/output buffer
-		len-	size of the buffer
-		cookie-	cookie passed in the parse_request function. For your own use.
-	*/
-	void setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len, void *cookie) );
-	void setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len, void *cookie) );
-	
+  /****************************************************************
+   Member Function:
+   void add_handler( char *filename, int
+   (*pHandler)(ehttp &obj, void *cookie));
+
+
+   Usage:
+   Add a request handler function to the ehttp parser instance
+
+
+   Parameters:
+   filename -   Name of URL file to handle (index.html for example)
+   pHandler -  Pointer to handler funciton, with reference to the
+   ehttp instance, and a void pointer (pointer to app)
+
+
+   Returns:
+   nothing
+
+
+   Example:
+
+   // Handler: diagreport.html
+   int handleDiagReport( ehttp &obj , void *cookie )
+   {
+   AppToGUI &app=CookieToApp(cookie);
+
+   // Load the template, replace the tokens
+   obj.out_set_file(obj."diagreport.html");
+   obj.out_replace_token("CONTENT",app.getDiagCounterReport());
+
+   // write the steam and finish connectoin
+   obj.out_replace();
+   return obj.out_commit();
+   }
+
+
+   ehttp  httpd;
+   MyApp  app;
+   ...
+   obj.add_handler("/", handleIndex );
+   obj.add_handler("/index.html", handleIndex );
+   obj.add_handler("/diagreport.html", handleDiagReport);
+
+
+   */
+  void add_handler( char *filename, int (*pHandler)(ehttp &obj, void *cookie));
+
+
+  /****************************************************************
+   Member Function:
+   void set_prerequest_handler( void (*pHandler)(ehttp &obj, void *cookie));
+
+   Usage:
+   Sets a handler function to be called for all specified requests handlers
+   before the specific request handler get called.
+
+   It's purpose is to allow action to be taken globally which effects all
+   requests handlers.
+
+   As an example, you might want to update a path to HTML files depending
+   on the type of browser used.  This way you would not need to check the
+   browser type in every request handler function
+
+   */
+  void set_prerequest_handler( void (*pHandler)(ehttp &obj, void *cookie));
+
+
+  /****************************************************************
+   Member Function:
+   map <string, string> & getRequestHeaders( void );
+
+   Usage:
+   Returns reference to a  map of the parsed out headers sent by the client.
+
+   This is used to get the value a header.
+
+   Example:
+   string cookie=getRequestHeaders()["User-Agent"];
+
+   */
+  map <string, string> & getRequestHeaders( void );
+
+
+  /****************************************************************
+   Member Function:
+   string getRequestHeader(char *key);
+
+   Usage:
+   Returns the value of a specific header as a string
+
+
+   Example:
+   int timeout=atol( getReqeustHeader("Keep-Alive").c_str() );
+   */
+  string getRequestHeader(char *key);
+
+  /****************************************************************
+   Member Function:
+   map <string, string> & getResponseHeader( void );
+
+   Usage:
+   Returns reference to a map of header to send back to the client.
+
+   Used to send a header to the client.
+
+   Exampe:
+   getResponseHeader()['Set-Cookie']="USERID=42; path=/index.html;"
+
+
+   */
+  map <string, string> & getResponseHeader( void );
+
+
+  /****************************************************************
+   Member Function:
+   void setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len, void *cookie) );
+   void setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len, void *cookie) );
+
+
+   Usage:
+   Used to specify alternate I/O functions, where the defaults are
+   send() and recv().
+
+   The intention is to allow the use of SSL, which has its own stream functions.
+
+   See 'hellowworldssl.cpp' for a detailed example of usage.
+
+   Paramters:
+   fd -   fd(socket), just like send() and recv()
+   buf-  pointer to input/output buffer
+   len-  size of the buffer
+   cookie-  cookie passed in the parse_request function. For your own use.
+   */
+  void setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len, void *cookie) );
+  void setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len, void *cookie) );
+
 };
-
-
 
 
