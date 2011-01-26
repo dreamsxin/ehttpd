@@ -26,7 +26,7 @@
                 //your own method to get a socket
 
 
-int handleDefault( ehttp &obj, void *cookie );
+int handleDefault( ehttp &obj, map<string, string> *cookie );
 
 int main( int argc, char *argv[] ) {
   //---------------------------------------------------------------
@@ -92,7 +92,7 @@ int main( int argc, char *argv[] ) {
 
   The default handler filename is NULL when you add_handler()
 */
-int handleDefault( ehttp &obj, void *cookie ) {
+int handleDefault( ehttp &obj, map<string, string> *cookie ) {
   //---------------------------------------------------------------
   //  #1b
   //  Specify the name of the HTML template file to be used.

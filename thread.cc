@@ -15,6 +15,9 @@
 #include <unistd.h>
 #include <deque>
 
+#include "./embedhttp.h"
+#include "./connection.h"
+
 using namespace std;
 
 #define MAX_THREAD 100
@@ -43,6 +46,14 @@ void nonblock(int sockfd) {
 
 pthread_mutex_t new_connection_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+int handleDefault( ehttp &obj, map<string, string> *cookie ) {
+  printf("HandleDefault!\n");
+  obj.out_set_file("helloworld_template.html");
+  obj.out_replace_token("MESSAGE","Hello World");
+  obj.out_replace();
+  return obj.out_commit();
+}
+
 void *main_thread(void *arg) {
   Thread *thread = (Thread *)arg;
 
@@ -54,23 +65,31 @@ void *main_thread(void *arg) {
       if (!thread->conn_pool->empty()) {
         socket = thread->conn_pool->front();
         thread->conn_pool->pop_front();
+        break;
       }
       pthread_mutex_unlock(&new_connection_mutex);
       sleep(1);
     }
 
     // job
+    printf("Start parsing\n");
+    ehttp http;
+    http.init();
+    http.add_handler(NULL, handleDefault);
 
+    map<string, string> cookie = map<string, string>();
+    http.parse_request(socket, &cookie);
+    printf("End parsing\n");
+
+    close(socket);
   }
 }
 
 int main() {
-  char c;
-  struct sockaddr_in srv, cli;
+  struct sockaddr_in srv;
   int clifd;
-  int tid;
   int i;
-  int choosen;
+  
   signal(SIGPIPE, SIG_IGN);
 
   deque<int> conn_pool;
@@ -104,13 +123,14 @@ int main() {
   struct sockaddr_in client_addr
   int sin_size = sizeof(struct sockaddr_in);
 
+  printf("Listen...\n");
   for( ; ; ) {
     if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
       perror("accept\n");
       exit(1);
     }
     nonblock(clifd);
-
+    printf("Accepted...\n");
     pthread_mutex_lock(&new_connection_mutex);
     conn_pool.push_back(clifd);
     pthread_mutex_unlock(&new_connection_mutex);
