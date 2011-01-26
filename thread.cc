@@ -87,9 +87,12 @@ int main() {
     exit(1);
   }
 
+  int yes;
+  setsockopt(listenfd, SOL_SOCKET,SO_REUSEADDR, (void *)&yes, sizeof(int));
+
   bzero(&srv, sizeof(srv));
   srv.sin_family = AF_INET;
-  srv.sin_addr.s_addr = INADDR_ANY;
+  srv.sin_addr.s_addr = htonl(INADDR_ANY);
   srv.sin_port = htons(PORT);
   if( bind(listenfd, (struct sockaddr *) &srv, sizeof(srv)) < 0) {
     perror("bind\n");
