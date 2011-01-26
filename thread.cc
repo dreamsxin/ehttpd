@@ -10,6 +10,9 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <errno.h>
+#include <stdlib.h>
+#include <time.h>
+#include <unistd.h>
 #define MAX_CLIENT_PER_THREAD 300
 #define MAX_THREAD 200
 #define PORT 3355
