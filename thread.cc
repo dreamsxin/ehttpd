@@ -98,8 +98,14 @@ int main() {
 
   listen(listenfd, 1024);
 
+  struct sockaddr_in client_addr
+  int sin_size = sizeof(struct sockaddr_in);
+
   for( ; ; ) {
-    clifd = accept(listenfd, NULL, NULL);
+    if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
+      perror("accept\n");
+      exit(1);
+    }
     nonblock(clifd);
 
     pthread_mutex_lock(&new_connection_mutex);
