@@ -620,7 +620,6 @@ void ehttp::setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len, map<stri
     pRecv=ehttpRecv;
 }
 
-
 map <string, string> & ehttp::getResponseHeader( void ) {
   return response_header;
 }

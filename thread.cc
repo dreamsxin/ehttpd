@@ -1,3 +1,4 @@
+#include <sstream>
 #include <pthread.h>
 #include <stdio.h>
 #include <sys/timeb.h>
@@ -24,6 +25,7 @@ using namespace std;
 #define PORT 3357
 
 int listenfd;
+int cookie_index=1;
 
 typedef struct {
   pthread_t tid;
@@ -47,10 +49,19 @@ void nonblock(int sockfd) {
 pthread_mutex_t new_connection_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int handleDefault( ehttp &obj, map<string, string> *cookie ) {
-  printf("HandleDefault!\n");
+  // printf("HandleDefault!\n");
   obj.out_set_file("helloworld_template.html");
-  obj.out_replace_token("MESSAGE","Hello World");
+  //  if ((*cookie)["SESSION_ID"] == "") {
+    ostringstream st;
+    st << cookie_index++;
+    string output(st.str());
+    obj.getResponseHeader()["Set-Cookie"] = "SESSION_ID=" + output;
+    obj.out_replace_token("MESSAGE","SET SESSION_ID = " + output);
+  // } else {
+  //   obj.out_replace_token("MESSAGE","SESSION_ID = " + (*cookie)["SESSION_ID"]);
+  // }
   obj.out_replace();
+  
   return obj.out_commit();
 }
 
