@@ -90,7 +90,7 @@ int main() {
   struct sockaddr_in srv;
   int clifd;
   int i;
-  
+
   signal(SIGPIPE, SIG_IGN);
 
   deque<int> conn_pool;
@@ -107,7 +107,7 @@ int main() {
     exit(1);
   }
 
-  int yes;
+  int yes = 1;
   setsockopt(listenfd, SOL_SOCKET,SO_REUSEADDR, (void *)&yes, sizeof(int));
 
   bzero(&srv, sizeof(srv));
