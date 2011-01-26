@@ -21,7 +21,7 @@
 using namespace std;
 
 #define MAX_THREAD 100
-#define PORT 3355
+#define PORT 3357
 
 int listenfd;
 
@@ -65,6 +65,7 @@ void *main_thread(void *arg) {
       if (!thread->conn_pool->empty()) {
         socket = thread->conn_pool->front();
         thread->conn_pool->pop_front();
+        pthread_mutex_unlock(&new_connection_mutex);
         break;
       }
       pthread_mutex_unlock(&new_connection_mutex);
@@ -120,8 +121,8 @@ int main() {
 
   listen(listenfd, 1024);
 
-  struct sockaddr_in client_addr
-  int sin_size = sizeof(struct sockaddr_in);
+  struct sockaddr_in client_addr;
+  socklen_t sin_size = sizeof(struct sockaddr_in);
 
   printf("Listen...\n");
   for( ; ; ) {
@@ -129,9 +130,10 @@ int main() {
       perror("accept\n");
       exit(1);
     }
-    nonblock(clifd);
-    printf("Accepted...\n");
+    //    nonblock(clifd);
+    printf("Accepted... %d\n", clifd);
     pthread_mutex_lock(&new_connection_mutex);
+    printf("Push_back...\n");
     conn_pool.push_back(clifd);
     pthread_mutex_unlock(&new_connection_mutex);
   }
