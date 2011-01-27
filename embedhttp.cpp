@@ -489,24 +489,18 @@ int ehttp::parse_header(map<string, string> *cookie, string &header) {
   return EHTTP_ERR_OK;		
 }
 
-int ehttp::parse_cookie(map <string, string> *cookie, string &cookie_string) {
+int ehttp::parse_cookie(map<string, string> *cookie, string &cookie_string) {
   cookie->clear();
-
-  string delimiters = " =;";
-  string::size_type lastPos = cookie_string.find_first_not_of(delimiters, 0);
-  string::size_type pos     = cookie_string.find_first_of(delimiters, lastPos);
-
-  while (string::npos != pos || string::npos != lastPos) {
-    string key = cookie_string.substr(lastPos, pos - lastPos);
-    lastPos = cookie_string.find_first_not_of(delimiters, pos);
-    pos = cookie_string.find_first_of(delimiters, lastPos);
-    if (string::npos == pos && string::npos == lastPos) {
-      return EHTTP_ERR_GENERIC;
+  vector<string> split_result;
+  split(split_result, cookie_string, is_any_of(";"), token_compress_on);
+  BOOST_FOREACH(string &pair, split_result) {
+    vector<string> pair_split_result;
+    split(pair_split_result, pair, is_any_of("="), token_compress_on);
+    if ((int) pair_split_result.size() == 2) {
+      trim(pair_split_result[0]);
+      trim(pair_split_result[1]);
+      (*cookie)[pair_split_result[0]] = pair_split_result[1];
     }
-    string value = cookie_string.substr(lastPos, pos - lastPos);
-    lastPos = cookie_string.find_first_not_of(delimiters, pos);
-    pos = cookie_string.find_first_of(delimiters, lastPos);
-    (*cookie)[key] = value;
   }
   return EHTTP_ERR_OK;		
 }
@@ -619,7 +613,6 @@ void ehttp::setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len, map<stri
   else
     pRecv=ehttpRecv;
 }
-
 
 map <string, string> & ehttp::getResponseHeader( void ) {
   return response_header;

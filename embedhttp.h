@@ -50,10 +50,14 @@
 #include <list>
 #include <string>
 #include <map>
-
+#include <vector>
+#include <boost/foreach.hpp>
+#include <boost/algorithm/string.hpp>
 
 
 using namespace std;
+using namespace boost;
+
 
 enum{
   EHTTP_ERR_GENERIC=-1,EHTTP_ERR_OK,EHTTP_ERR_CONNECTLOST,EHTTP_ERR_APP,
