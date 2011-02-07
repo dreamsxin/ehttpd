@@ -1,0 +1,1 @@
+make && ./embedhttp_unittest

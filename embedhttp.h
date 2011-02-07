@@ -53,7 +53,8 @@
 #include <vector>
 #include <boost/foreach.hpp>
 #include <boost/algorithm/string.hpp>
-
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/shared_ptr.hpp>
 
 using namespace std;
 using namespace boost;
@@ -65,7 +66,6 @@ enum{
   EHTTP_HDR_NOTHING, EHTTP_HDR_OK,EHTTP_BINARY_FILE,EHTTP_TEXT_FILE,
   EHTTP_REQUEST_GET, EHTTP_REQUEST_POST,EHTTP_LENGTH_REQUIRED
 };
-
 
 
 ssize_t ehttpRecv(void *ctx, void *buf, size_t len, map <string, string> *cookie);
@@ -83,6 +83,8 @@ ssize_t ehttpSend(void *ctx, const void *buf, size_t len, map <string, string> *
 class ehttp
 {
   char input_buffer[INPUT_BUFFER_SIZE];
+
+
 
   int localFD;
   int filetype;
@@ -104,9 +106,9 @@ class ehttp
   map <string, string> replace_token;
   map <string, string> response_header;
 
-  map <string, int (*)(ehttp &obj, map <string, string> *cookie)> handler_map;
-  int (*pDefaultHandler)(ehttp &obj, map <string, string> *cookie);
-  void (*pPreRequestHandler)(ehttp &obj, map <string, string> *cookie);
+  map <string, int (*)(ehttp *obj)> handler_map;
+  int (*pDefaultHandler)(ehttp *obj);
+  void (*pPreRequestHandler)(ehttp *obj);
 
   ssize_t (*pRecv)(void *ctx, void *buf, size_t len, map <string, string> *cookie);
   ssize_t (*pSend)(void *ctx, const void *buf, size_t len, map <string, string> *cookie);
@@ -118,6 +120,7 @@ class ehttp
   void out_buffer_clear(void);
 
 public:
+  int getFD();
   int parse_cookie(map <string, string> *cookie, string &cookie_string);
 
   /****************************************************************
@@ -654,7 +657,7 @@ public:
 
 
    */
-  void add_handler( char *filename, int (*pHandler)(ehttp &obj, map <string, string> *cookie));
+  void add_handler( char *filename, int (*pHandler)(ehttp *obj));
 
 
   /****************************************************************
@@ -673,7 +676,7 @@ public:
    browser type in every request handler function
 
    */
-  void set_prerequest_handler( void (*pHandler)(ehttp &obj, map <string, string> *cookie));
+  void set_prerequest_handler( void (*pHandler)(ehttp *obj));
 
   /****************************************************************
    Member Function:
