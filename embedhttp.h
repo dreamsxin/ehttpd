@@ -102,6 +102,7 @@ class ehttp
 
   map <string, string> url_parms;
   map <string, string> post_parms;
+  map <string, string> global_parms;
   map <string, string> request_header;
   map <string, string> replace_token;
   map <string, string> response_header;

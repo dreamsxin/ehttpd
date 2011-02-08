@@ -82,19 +82,19 @@ string & ehttp::getFilename( void ) {
 }
 
 string ehttp::getUrlParam(char *key) {
-  return url_parms[key];
+  return global_parms[key];
 }
 
 string ehttp::getPostParam(char *key) {
-  return post_parms[key];
+  return global_parms[key];
 }
 
 map <string, string> & ehttp::getPostParams( void ) {
-  return post_parms;
+  return global_parms;
 }
 
 map <string, string> & ehttp::getUrlParams( void ) {
-  return url_parms;
+  return global_parms;
 }
 
 map <string, string> & ehttp::getRequestHeaders( void ) {
@@ -347,6 +347,7 @@ int ehttp::parse_out_pairs(map <string, string> *cookie, string &remainder, map 
         switch (remainder[i]) {
           case '&':
             parms[id] = value;
+            global_params[id] = value;
             dprintf("Added %s to %s\r\n",id.c_str(),value.c_str());
             state = 0;
             break;
@@ -359,8 +360,10 @@ int ehttp::parse_out_pairs(map <string, string> *cookie, string &remainder, map 
     }
   }
   // Add non-nil value to parm list
-  if( state == 2 )
+  if( state == 2 ) {
     parms[id]=value;
+    global_params[id] = value;
+  }
 
   return EHTTP_ERR_OK;
 }
@@ -561,6 +564,7 @@ int ehttp::parse_request( int fd, map <string, string> *cookie ) {
   filetype=EHTTP_TEXT_FILE;
   url_parms.clear();
   post_parms.clear();
+  global_parms.clear();
   request_header.clear();
   replace_token.clear();
   contentlength=0;
