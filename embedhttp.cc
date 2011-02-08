@@ -347,7 +347,7 @@ int ehttp::parse_out_pairs(map <string, string> *cookie, string &remainder, map 
         switch (remainder[i]) {
           case '&':
             parms[id] = value;
-            global_params[id] = value;
+            global_parms[id] = value;
             dprintf("Added %s to %s\r\n",id.c_str(),value.c_str());
             state = 0;
             break;
@@ -362,7 +362,7 @@ int ehttp::parse_out_pairs(map <string, string> *cookie, string &remainder, map 
   // Add non-nil value to parm list
   if( state == 2 ) {
     parms[id]=value;
-    global_params[id] = value;
+    global_parms[id] = value;
   }
 
   return EHTTP_ERR_OK;
