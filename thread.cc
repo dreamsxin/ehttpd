@@ -24,13 +24,32 @@ using namespace std;
 #define MAX_THREAD 100
 #define PORT 3357
 
+#define dprintf printf
+int nprintf(const char *format, ...) {
+  return 0;
+}
+
 int listenfd;
 int cookie_index=1;
-
+typedef shared_ptr<ehttp> ehttp_ptr;
 typedef struct {
   pthread_t tid;
   deque<int> *conn_pool;
 } Thread;
+
+class connection {
+public:
+  shared_ptr<ehttp> fd_pad;
+  string command;
+  string requestpath;
+  string key;
+  ehttp_ptr fd_agent;
+  int status;
+  connection(){};
+  connection(ehttp* fd_pad, string command, string requestpath, string key, ehttp* fd_agent, int status):fd_pad(fd_pad),command(command),requestpath(requestpath),key(key),fd_agent(fd_agent),status(status){};
+};
+
+map <string, connection > connections;
 
 void nonblock(int sockfd) {
   int opts;
@@ -48,21 +67,92 @@ void nonblock(int sockfd) {
 
 pthread_mutex_t new_connection_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-int handleDefault( ehttp &obj, map<string, string> *cookie ) {
-  // printf("HandleDefault!\n");
-  obj.out_set_file("helloworld_template.html");
-  //  if ((*cookie)["SESSION_ID"] == "") {
-    ostringstream st;
-    st << cookie_index++;
-    string output(st.str());
-    obj.getResponseHeader()["Set-Cookie"] = "SESSION_ID=" + output;
-    obj.out_replace_token("MESSAGE","SET SESSION_ID = " + output);
-  // } else {
-  //   obj.out_replace_token("MESSAGE","SESSION_ID = " + (*cookie)["SESSION_ID"]);
-  // }
-  obj.out_replace();
-  
-  return obj.out_commit();
+int handleDefault( ehttp *obj) {
+  dprintf("HandleDefault!\n");
+  obj->out_set_file("helloworld_template.html");
+  obj->out_replace_token("MESSAGE","Hello World");
+  obj->out_replace();
+  return obj->out_commit();
+}
+
+int execute_connection(string userid) {
+  if (connections[userid].fd_agent != NULL && connections[userid].fd_pad != NULL) {
+    printf("Execute_connection : fd_agent = %d    <==>  fd_pad = %d\n",connections[userid].fd_agent->getFD(), connections[userid].fd_pad->getFD());
+    ehttp *obj = connections[userid].fd_agent.get();
+    obj->out_set_file("helloworld_template.html");
+    obj->out_replace_token("MESSAGE","{command:" + connections[userid].command + ",requestpath:" + connections[userid].requestpath);
+    obj->out_replace();
+    int ret = obj->out_commit();
+    dprintf("Close(%d)\n",(connections[userid].fd_agent)->getFD());
+    close((connections[userid].fd_agent)->getFD());
+    dprintf("Status change ( 1-> 2 )\n");
+    connections[userid].status = 2;
+    return ret;
+  }
+ 
+ return 0;
+}
+
+int pad_handler( ehttp *obj ) {
+  string userid = "bigeye";
+
+  dprintf("PAD Handler accepted...\n");
+  if (connections.count(userid) == 0) {
+    dprintf("connection created(%s)\n",userid.c_str());
+    connections[userid] = connection(NULL, "", "", "", NULL, 1);
+  }
+
+  connections[userid].fd_pad = ehttp_ptr(obj);
+  connections[userid].command = obj->getUrlParams()["command"];
+  connections[userid].requestpath = obj->getUrlParams()["requestpath"];
+  connections[userid].key=userid;
+  connections[userid].status=1;
+  dprintf("Set pad info (fd_pad=%d, command=%s, requestpath=%s, key=%s,status=%d)\n",(connections[userid].fd_pad)->getFD(), connections[userid].command.c_str(),connections[userid].requestpath.c_str(),connections[userid].key.c_str(), connections[userid].status);
+  return execute_connection(userid);
+}
+
+int agent_handler( ehttp *obj ) {
+  string userid = "bigeye";
+
+  dprintf("AGENT Handler accepted...\n");
+  if (connections.count(userid) == 0) {
+    dprintf("connection created(%s)\n",userid.c_str());
+    connections[userid] = connection(NULL, "", "", "", NULL, 1);
+  }
+  dprintf("Set agent info\n");
+  connections[userid].fd_agent = ehttp_ptr(obj);
+  if (connections[userid].status == 1) {
+    return execute_connection(userid);
+  } else {
+    string jsondata = obj->getPostParams()["jsondata"];
+    if (connections[userid].key == obj->getPostParams()["key"]) {
+      ehttp *pad = connections[userid].fd_pad.get();
+      pad->out_set_file("helloworld_template.html");
+      pad->out_replace_token("MESSAGE","OK : " + jsondata);
+      pad->out_replace();
+      pad->getResponseHeader()["jsondata"] = jsondata;
+      pad->out_commit();
+      dprintf("Close(%d)\n",pad->getFD());
+      close(pad->getFD());
+      obj->out_set_file("helloworld_template.html");
+      obj->out_replace_token("MESSAGE","OK : " + jsondata);
+      obj->out_replace();
+      int ret = obj->out_commit();
+      dprintf("Close(%d)\n",obj->getFD());
+      close(obj->getFD());
+      dprintf("Connection close...\n");
+      connections.erase(userid);
+      return ret;
+    } else {
+      obj->out_set_file("helloworld_template.html");
+      obj->out_replace_token("MESSAGE","FAIL : Key doesn't match!");
+      obj->out_replace();
+      int ret = obj->out_commit();
+      dprintf("Close(%d)\n",obj->getFD());
+      close(obj->getFD());
+      return ret;
+    }
+  }
 }
 
 void *main_thread(void *arg) {
@@ -84,18 +174,25 @@ void *main_thread(void *arg) {
     }
 
     // job
-    printf("Start parsing\n");
-    ehttp http;
-    http.init();
-    http.add_handler(NULL, handleDefault);
+    dprintf("\n=============\n");
+    dprintf("Start parsing\n");
+    dprintf("=============\n");
+    ehttp *http = new ehttp();
+    http->init();
+    http->add_handler("/agent", agent_handler);
+    http->add_handler("/pad", pad_handler);
+    http->add_handler(NULL, handleDefault);
 
     map<string, string> cookie = map<string, string>();
-    http.parse_request(socket, &cookie);
-    printf("End parsing\n");
-
-    close(socket);
+    http->parse_request(socket, &cookie);
+    dprintf("=============\n");
+    dprintf("End parsing\n");
+    dprintf("=============\n\n");
   }
 }
+
+
+
 
 int main() {
   struct sockaddr_in srv;
@@ -135,16 +232,15 @@ int main() {
   struct sockaddr_in client_addr;
   socklen_t sin_size = sizeof(struct sockaddr_in);
 
-  printf("Listen...\n");
+  dprintf("Listen...\n");
   for( ; ; ) {
     if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
       perror("accept\n");
       exit(1);
     }
     //    nonblock(clifd);
-    printf("Accepted... %d\n", clifd);
+    dprintf("Accepted... %d\n", clifd);
     pthread_mutex_lock(&new_connection_mutex);
-    printf("Push_back...\n");
     conn_pool.push_back(clifd);
     pthread_mutex_unlock(&new_connection_mutex);
   }

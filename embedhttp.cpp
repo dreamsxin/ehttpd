@@ -42,7 +42,11 @@
 #include "./embedhttp.h"
 #include <assert.h>
 
-#define  dprintf printf
+#define dprintf null_printf
+
+int null_printf(const char *format, ...) {
+  return 0;
+}
 
 
 ssize_t ehttpRecv(void *fd, void *buf, size_t len, map <string, string> *cookie) {
@@ -279,14 +283,14 @@ int ehttp::init( void ) {
 }
 
 
-void ehttp::add_handler( char *filename, int (*pHandler)(ehttp &obj, map <string, string> *cookie)) {
+void ehttp::add_handler( char *filename, int (*pHandler)(ehttp *obj)) {
   if( !filename )
     pDefaultHandler=pHandler;
   else
     handler_map[filename]=pHandler;
 }
 
-void ehttp::set_prerequest_handler( void (*pHandler)(ehttp &obj, map <string, string> *cookie)) {
+void ehttp::set_prerequest_handler( void (*pHandler)(ehttp *obj)) {
   pPreRequestHandler=pHandler;
 }
 
@@ -374,7 +378,7 @@ int ehttp::parse_header(map<string, string> *cookie, string &header) {
   requesttype=-1;
 
   // Find end of request URL
-  printf("pHeader == [%s]\r\n",pHeader);
+  dprintf("pHeader == [%s]\r\n",pHeader);
   request_end=strstr(pHeader," HTTP/1.0\r\n");
   if (!request_end) {
     request_end=strstr(pHeader," HTTP/1.1\r\n");
@@ -460,6 +464,7 @@ int ehttp::parse_header(map<string, string> *cookie, string &header) {
           value+=*request_end++;
         }
         //add key value pair to map
+        to_upper(key);
         request_header[key]=value;
         dprintf("Header : ...%s... == ...%s...\r\n",key.c_str(),value.c_str());
         if (*request_end) {
@@ -473,7 +478,7 @@ int ehttp::parse_header(map<string, string> *cookie, string &header) {
     }
   }
   // Parse Cookie
-  int ret = parse_cookie(cookie, request_header["Cookie"]);
+  int ret = parse_cookie(cookie, request_header["COOKIE"]);
   if (ret != EHTTP_ERR_OK) {
     return ret;
   }
@@ -487,6 +492,10 @@ int ehttp::parse_header(map<string, string> *cookie, string &header) {
   // Find content length
   contentlength=atoi (request_header["CONTENT-LENGTH"].c_str());
   return EHTTP_ERR_OK;		
+}
+
+int ehttp::getFD() {
+  return localFD;
 }
 
 int ehttp::parse_cookie(map<string, string> *cookie, string &cookie_string) {
@@ -543,7 +552,7 @@ int ehttp:: parse_message( int fd, map <string, string> *cookie, string &message
 
 
 int ehttp::parse_request( int fd, map <string, string> *cookie ) {
-  int (*pHandler)(ehttp &obj, map <string, string> *cookie)=NULL;
+  int (*pHandler)(ehttp *obj)=NULL;
 
   /* Things in the object which must be reset for each request */
   filename="";
@@ -566,6 +575,7 @@ int ehttp::parse_request( int fd, map <string, string> *cookie ) {
         // We are HTTP1.0 and need the content len to be valid
         // Opera Broswer
         if( contentlength==0 && requesttype==EHTTP_REQUEST_POST ) {
+          dprintf("Content Length is 0 and requesttype is EHTTP_REQUEST_POST\n ");
           return out_commit(EHTTP_LENGTH_REQUIRED);
         }
 
@@ -573,10 +583,10 @@ int ehttp::parse_request( int fd, map <string, string> *cookie ) {
         //Call the default handler if we didn't get the filename
         out_buffer_clear();
 
-        if( pPreRequestHandler ) pPreRequestHandler( *this, ptheCookie );
+        if( pPreRequestHandler ) pPreRequestHandler( this );
         if( !filename.length() ) {
           dprintf("%d Call default handler no filename \r\n",__LINE__);
-          return pDefaultHandler( *this, ptheCookie );
+          return pDefaultHandler( this );
         }
         else {
           //Lookup the handler function fo this filename
@@ -585,12 +595,12 @@ int ehttp::parse_request( int fd, map <string, string> *cookie ) {
           if( !pHandler ) {
             dprintf("%d Call default handler\r\n",__LINE__);
 
-            return pDefaultHandler( *this, ptheCookie );
+            return pDefaultHandler( this );
           }
           //Found a handler
           else {
             dprintf("%d Call user handler\r\n",__LINE__);
-            return pHandler( *this, ptheCookie );
+            return pHandler( this );
           }
         }
       }
