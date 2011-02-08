@@ -23,6 +23,13 @@ embedhttp.o : embedhttp.cc *.h
 connection.o : connection.cc *.h
 	$(CXX) $(CXXFLAGS) -c -o connection.o connection.cc
 
-$(DRSERVER) : thread.o embedhttp.o connection.o
-	$(CXX) $(CXXFLAGS) -o $(BIN)/$(DRSERVER) -lpthread $^
+dr_mysql.o : dr_mysql.cc *.h
+	$(CXX) $(CXXFLAGS) -c -o dr_mysql.o dr_mysql.cc -I/usr/local/include/cppconn
+	$(CXX) $(CXXFLAGS) -c -o mysql_test.o mysql_test.cc -I/usr/local/include/cppconn
+
+mysql_test : dr_mysql.o mysql_test.o
+	$(CXX) $(CXXFLAGS) -o $(BIN)/mysql_test -lmysqlcppconn $^
+
+$(DRSERVER) : thread.o embedhttp.o connection.o dr_mysql.o
+	$(CXX) $(CXXFLAGS) -o $(BIN)/$(DRSERVER) -lpthread -lmysqlcppconn $^
 
