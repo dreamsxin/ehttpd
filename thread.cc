@@ -40,14 +40,24 @@ typedef struct {
 
 class connection {
 public:
-  shared_ptr<ehttp> fd_pad;
+  ehttp_ptr fd_request;
   string command;
   string requestpath;
   string key;
-  ehttp_ptr fd_agent;
+  ehttp_ptr fd_polling;
   int status;
-  connection(){};
-  connection(ehttp* fd_pad, string command, string requestpath, string key, ehttp* fd_agent, int status):fd_pad(fd_pad),command(command),requestpath(requestpath),key(key),fd_agent(fd_agent),status(status){};
+  connection() {};
+  connection(ehttp *fd_request,
+             string command,
+             string requestpath,
+             string key,
+             ehttp *fd_polling,
+             int status) : fd_request(fd_request),
+                           command(command),
+                           requestpath(requestpath),
+                           key(key),
+                           fd_polling(fd_polling),
+                           status(status) {};
 };
 
 map <string, connection > connections;
@@ -114,16 +124,16 @@ int login_handler(ehttp *obj) {
   return ret;
 }
 
-int execute_connection(string userid) {
-  if (connections[userid].fd_agent != NULL && connections[userid].fd_pad != NULL) {
-    printf("Execute_connection : fd_agent = %d    <==>  fd_pad = %d\n",connections[userid].fd_agent->getFD(), connections[userid].fd_pad->getFD());
-    ehttp *obj = connections[userid].fd_agent.get();
+int execute_polling(string userid) {
+  if (connections[userid].fd_polling != NULL && connections[userid].fd_request != NULL) {
+    printf("Execute_polling : fd_polling = %d    <==>  fd_request = %d\n",connections[userid].fd_polling->getFD(), connections[userid].fd_request->getFD());
+    ehttp *obj = connections[userid].fd_polling.get();
     obj->out_set_file("helloworld_template.html");
     obj->out_replace_token("MESSAGE","{command:" + connections[userid].command + ",requestpath:" + connections[userid].requestpath);
     obj->out_replace();
     int ret = obj->out_commit();
-    dprintf("Close(%d)\n",(connections[userid].fd_agent)->getFD());
-    close((connections[userid].fd_agent)->getFD());
+    dprintf("Close(%d)\n",(connections[userid].fd_polling)->getFD());
+    close((connections[userid].fd_polling)->getFD());
     dprintf("Status change ( 1-> 2 )\n");
     connections[userid].status = 2;
     return ret;
@@ -132,65 +142,83 @@ int execute_connection(string userid) {
  return 0;
 }
 
-int pad_handler( ehttp *obj ) {
+int request_handler( ehttp *obj ) {
   string userid = "bigeye";
 
-  dprintf("PAD Handler accepted...\n");
+  dprintf("Request Handler accepted...\n");
   if (connections.count(userid) == 0) {
     dprintf("connection created(%s)\n",userid.c_str());
     connections[userid] = connection(NULL, "", "", "", NULL, 1);
   }
 
-  connections[userid].fd_pad = ehttp_ptr(obj);
+  connections[userid].fd_request = ehttp_ptr(obj);
   connections[userid].command = obj->getUrlParams()["command"];
   connections[userid].requestpath = obj->getUrlParams()["requestpath"];
   connections[userid].key=userid;
   connections[userid].status=1;
-  dprintf("Set pad info (fd_pad=%d, command=%s, requestpath=%s, key=%s,status=%d)\n",(connections[userid].fd_pad)->getFD(), connections[userid].command.c_str(),connections[userid].requestpath.c_str(),connections[userid].key.c_str(), connections[userid].status);
-  return execute_connection(userid);
+  dprintf("Set request info (fd_request=%d, command=%s, requestpath=%s, key=%s,status=%d)\n",(connections[userid].fd_request)->getFD(), connections[userid].command.c_str(),connections[userid].requestpath.c_str(),connections[userid].key.c_str(), connections[userid].status);
+  return execute_polling(userid);
 }
 
-int agent_handler( ehttp *obj ) {
+int polling_handler( ehttp *obj ) {
   string userid = "bigeye";
 
-  dprintf("AGENT Handler accepted...\n");
+  dprintf("Polling Handler accepted...\n");
   if (connections.count(userid) == 0) {
     dprintf("connection created(%s)\n",userid.c_str());
     connections[userid] = connection(NULL, "", "", "", NULL, 1);
   }
   dprintf("Set agent info\n");
-  connections[userid].fd_agent = ehttp_ptr(obj);
+  connections[userid].fd_polling = ehttp_ptr(obj);
+  if (connections[userid].status == 2) {
+    dprintf("Wrong polling\n");
+    close(obj->getFD());
+    return EHTTP_ERR_GENERIC;
+  }
+  return execute_polling(userid);
+}
+int upload_handler( ehttp *obj ) {
+  string userid = "bigeye";
+
+  dprintf("Upload Handler accepted...\n");
+  if (connections.count(userid) == 0) {
+    dprintf("connection created(%s)\n",userid.c_str());
+    connections[userid] = connection(NULL, "", "", "", NULL, 1);
+  }
+  dprintf("Set agent info\n");
+  connections[userid].fd_polling = ehttp_ptr(obj);
   if (connections[userid].status == 1) {
-    return execute_connection(userid);
+    dprintf("Wrong upload\n");
+    close(obj->getFD());
+    return EHTTP_ERR_GENERIC;
+  }
+  string jsondata = obj->getPostParams()["jsondata"];
+  if (connections[userid].key == obj->getPostParams()["key"]) {
+    ehttp *request = connections[userid].fd_request.get();
+    request->out_set_file("helloworld_template.html");
+    request->out_replace_token("MESSAGE","OK : " + jsondata);
+    request->out_replace();
+    request->getResponseHeader()["jsondata"] = jsondata;
+    request->out_commit();
+    dprintf("Close(%d)\n",request->getFD());
+    close(request->getFD());
+    obj->out_set_file("helloworld_template.html");
+    obj->out_replace_token("MESSAGE","OK : " + jsondata);
+    obj->out_replace();
+    int ret = obj->out_commit();
+    dprintf("Close(%d)\n",obj->getFD());
+    close(obj->getFD());
+    dprintf("Connection close...\n");
+    connections.erase(userid);
+    return ret;
   } else {
-    string jsondata = obj->getPostParams()["jsondata"];
-    if (connections[userid].key == obj->getPostParams()["key"]) {
-      ehttp *pad = connections[userid].fd_pad.get();
-      pad->out_set_file("helloworld_template.html");
-      pad->out_replace_token("MESSAGE","OK : " + jsondata);
-      pad->out_replace();
-      pad->getResponseHeader()["jsondata"] = jsondata;
-      pad->out_commit();
-      dprintf("Close(%d)\n",pad->getFD());
-      close(pad->getFD());
-      obj->out_set_file("helloworld_template.html");
-      obj->out_replace_token("MESSAGE","OK : " + jsondata);
-      obj->out_replace();
-      int ret = obj->out_commit();
-      dprintf("Close(%d)\n",obj->getFD());
-      close(obj->getFD());
-      dprintf("Connection close...\n");
-      connections.erase(userid);
-      return ret;
-    } else {
-      obj->out_set_file("helloworld_template.html");
-      obj->out_replace_token("MESSAGE","FAIL : Key doesn't match!");
-      obj->out_replace();
-      int ret = obj->out_commit();
-      dprintf("Close(%d)\n",obj->getFD());
-      close(obj->getFD());
-      return ret;
-    }
+    obj->out_set_file("helloworld_template.html");
+    obj->out_replace_token("MESSAGE","FAIL : Key doesn't match!");
+    obj->out_replace();
+    int ret = obj->out_commit();
+    dprintf("Close(%d)\n",obj->getFD());
+    close(obj->getFD());
+    return ret;
   }
 }
 
@@ -218,8 +246,9 @@ void *main_thread(void *arg) {
     dprintf("=============\n");
     ehttp *http = new ehttp();
     http->init();
-    http->add_handler("/agent", agent_handler);
-    http->add_handler("/pad", pad_handler);
+    http->add_handler("/polling", polling_handler);
+    http->add_handler("/upload", upload_handler);
+    http->add_handler("/request", request_handler);
     http->add_handler("/login", login_handler);
     http->add_handler(NULL, handleDefault);
 
@@ -287,4 +316,3 @@ int main() {
 
   return 0;
 }
-
