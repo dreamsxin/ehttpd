@@ -18,6 +18,7 @@
 
 #include "./embedhttp.h"
 #include "./connection.h"
+#include "./dr_mysql.h"
 
 using namespace std;
 
@@ -50,6 +51,10 @@ public:
 };
 
 map <string, connection > connections;
+map <string, map<string, string> > session;
+
+
+DrMysql db;
 
 void nonblock(int sockfd) {
   int opts;
@@ -67,12 +72,46 @@ void nonblock(int sockfd) {
 
 pthread_mutex_t new_connection_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-int handleDefault( ehttp *obj) {
+int handleDefault(ehttp *obj) {
   dprintf("HandleDefault!\n");
   obj->out_set_file("helloworld_template.html");
   obj->out_replace_token("MESSAGE","Hello World");
   obj->out_replace();
-  return obj->out_commit();
+  int ret = obj->out_commit();
+
+  dprintf("Close(%d)\n",obj->getFD());
+  close(obj->getFD());
+  dprintf("Connection close...\n");
+
+  return ret;
+}
+
+int login_handler(ehttp *obj) {
+  dprintf("Login Handler!\n");
+  if ((obj->getPostParams()).count("email") > 0) {
+    dprintf("POST\n");
+    string email = obj->getPostParams()["email"];
+    string password = obj->getPostParams()["password"];
+    dprintf("%s || %s\n",email.c_str(),password.c_str());
+    string user_id, macaddress;
+    string result = "Fail";
+    if (db.login(email, password, &user_id, &macaddress)) {
+      obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + user_id;
+      session[user_id]["user_id"] = user_id;
+      result = "OK";
+    }
+    obj->out_set_file("helloworld_template.html");
+    obj->out_replace_token("MESSAGE", result);
+  } else {
+    dprintf("GET\n");
+    obj->out_set_file("login_page.html");
+  }
+  obj->out_replace();
+  int ret = obj->out_commit();
+  dprintf("Close(%d)\n",obj->getFD());
+  close(obj->getFD());
+  dprintf("Connection close...\n");
+  return ret;
 }
 
 int execute_connection(string userid) {
@@ -181,6 +220,7 @@ void *main_thread(void *arg) {
     http->init();
     http->add_handler("/agent", agent_handler);
     http->add_handler("/pad", pad_handler);
+    http->add_handler("/login", login_handler);
     http->add_handler(NULL, handleDefault);
 
     map<string, string> cookie = map<string, string>();

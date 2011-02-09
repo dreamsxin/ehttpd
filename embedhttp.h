@@ -51,6 +51,7 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <sstream>
 #include <boost/foreach.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
@@ -122,6 +123,7 @@ class ehttp
 
 public:
   int getFD();
+  int unescape(string *str);
   int parse_cookie(map <string, string> *cookie, string &cookie_string);
 
   /****************************************************************

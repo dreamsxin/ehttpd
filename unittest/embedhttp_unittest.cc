@@ -2,6 +2,60 @@
 #include <gtest/gtest.h>
 #include <iostream>
 
+TEST(unescape, simple) {
+  ehttp mock;
+  string tmp = "%40ff%24gg";
+  int ret = mock.unescape(&tmp);
+  EXPECT_EQ(ret, EHTTP_ERR_OK);
+  EXPECT_EQ("@ff$gg", tmp);
+}
+
+TEST(unescape, simple2) {
+  ehttp mock;
+  string tmp = "%26ff%40";
+  int ret = mock.unescape(&tmp);
+  EXPECT_EQ(ret, EHTTP_ERR_OK);
+  EXPECT_EQ("&ff@", tmp);
+}
+
+TEST(unescape, simple3) {
+  ehttp mock;
+  string tmp = "ggdfg";
+  int ret = mock.unescape(&tmp);
+  EXPECT_EQ(ret, EHTTP_ERR_OK);
+  EXPECT_EQ("ggdfg", tmp);
+}
+
+TEST(unescape, simple4) {
+  ehttp mock;
+  string tmp = "%25a%25s%25d%25f%25a%25s%25d%25b";
+  int ret = mock.unescape(&tmp);
+  EXPECT_EQ(ret, EHTTP_ERR_OK);
+  EXPECT_EQ("%a%s%d%f%a%s%d%b", tmp);
+}
+
+TEST(unescape, simple5) {
+  ehttp mock;
+  string tmp = "%25a%25s%2ad%25f%25a%2fs%25d%25b";
+  int ret = mock.unescape(&tmp);
+  EXPECT_EQ(ret, EHTTP_ERR_OK);
+  EXPECT_EQ("%a%s*d%f%a/s%d%b", tmp);
+}
+
+TEST(unescape, error) {
+  ehttp mock;
+  string tmp = "%25a%25s%2ad%25f%25a%2fs%25d%25b%2";
+  int ret = mock.unescape(&tmp);
+  EXPECT_EQ(ret, EHTTP_ERR_GENERIC);
+}
+
+TEST(unescape, error2) {
+  ehttp mock;
+  string tmp = "%25a%25s%2ad%25f%25a%2fs%25d%25b%";
+  int ret = mock.unescape(&tmp);
+  EXPECT_EQ(ret, EHTTP_ERR_GENERIC);
+}
+
 TEST(parse_header, correct_pair) {
   ehttp mock;
   string tmp = "t1=t2;t3=t4;t5=t6;";

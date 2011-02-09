@@ -22,7 +22,7 @@
 #define DATABASE "DIRECTREADER"
 
 #include "dr_mysql.h"
-
+using namespace sql;
 
 DrMysql::DrMysql() {
   driver = get_driver_instance();

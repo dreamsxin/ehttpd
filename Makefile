@@ -15,7 +15,7 @@ clean :
 	rm -f $(BIN)/$(DRSERVER) gtest.a gtest_main.a *.o
 
 thread.o : thread.cc *.h
-	$(CXX) $(CXXFLAGS) -c -o thread.o thread.cc
+	$(CXX) $(CXXFLAGS) -c -o thread.o thread.cc -I/usr/local/include/cppconn
 
 embedhttp.o : embedhttp.cc *.h
 	$(CXX) $(CXXFLAGS) -c -o embedhttp.o embedhttp.cc

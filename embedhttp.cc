@@ -346,6 +346,8 @@ int ehttp::parse_out_pairs(map <string, string> *cookie, string &remainder, map 
       case 2:
         switch (remainder[i]) {
           case '&':
+            unescape(&id);
+            unescape(&value);
             parms[id] = value;
             global_parms[id] = value;
             dprintf("Added %s to %s\r\n",id.c_str(),value.c_str());
@@ -486,12 +488,6 @@ int ehttp::parse_header(map<string, string> *cookie, string &header) {
     return ret;
   }
   
-  //  map<string, string>::iterator it;
-  //  for (it=((map<string, string> *)cookie)->begin() ; it != ((map<string, string> *)cookie)->end(); ++it) {
-  //    dprintf("CookieParsing; %s : %s\r\n",(*it).first.c_str(), (*it).second.c_str());
-  //    cout<<(*it).first << (*it).second <<endl;
-  //  }
-  
   // Find content length
   contentlength=atoi (request_header["CONTENT-LENGTH"].c_str());
   return EHTTP_ERR_OK;		
@@ -499,6 +495,21 @@ int ehttp::parse_header(map<string, string> *cookie, string &header) {
 
 int ehttp::getFD() {
   return localFD;
+}
+
+int ehttp::unescape(string *str) {
+  size_t found = -1;
+  while((found = str->find('%', found+1)) != string::npos) {
+    if (found+2 >= str->size()) {
+      return EHTTP_ERR_GENERIC;
+    }
+    int convert;
+    std::istringstream iss(str->substr(found+1,2));
+    iss >> hex >> convert;
+    char replace_char = (char) convert;
+    *str = str->substr(0, found) + replace_char + str->substr(found+3);
+  }
+  return EHTTP_ERR_OK;
 }
 
 int ehttp::parse_cookie(map<string, string> *cookie, string &cookie_string) {
@@ -511,6 +522,8 @@ int ehttp::parse_cookie(map<string, string> *cookie, string &cookie_string) {
     if ((int) pair_split_result.size() == 2) {
       trim(pair_split_result[0]);
       trim(pair_split_result[1]);
+      unescape(&pair_split_result[0]);
+      unescape(&pair_split_result[1]);
       (*cookie)[pair_split_result[0]] = pair_split_result[1];
     }
   }

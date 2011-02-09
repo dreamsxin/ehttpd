@@ -8,11 +8,10 @@ using namespace boost;
 #include <connection.h>
 
 using namespace std;
-using namespace sql;
 
 class DrMysql{
-  scoped_ptr<Connection> con;
-  Driver* driver;
+  scoped_ptr<sql::Connection> con;
+  sql::Driver* driver;
 
 public:
   DrMysql();
