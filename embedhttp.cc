@@ -49,14 +49,13 @@ int null_printf(const char *format, ...) {
 }
 
 
-ssize_t ehttpRecv(void *fd, void *buf, size_t len, map <string, string> *cookie) {
+ssize_t ehttpRecv(void *fd, void *buf, size_t len) {
   return recv((int)fd,buf,len,0);
 }
 
-ssize_t ehttpSend(void *fd, const void *buf, size_t len, map <string, string> *cookie) {
+ssize_t ehttpSend(void *fd, const void *buf, size_t len) {
   return send((int)fd,buf,len,0);
 }
-
 
 int ehttp::getRequestType(void) {
   return requesttype;
@@ -223,7 +222,7 @@ int ehttp::out_commit_binary(void) {
         int remain=r;
         int total=remain;
         while( remain ) {
-          int w=pSend((void*)localFD,buffer+(total-remain),remain,ptheCookie);
+          int w=pSend((void*)localFD,buffer+(total-remain),remain);
           if( w<0 ) {
             err=w;
             remain=0;
@@ -264,7 +263,7 @@ int ehttp::out_commit(int header) {
   int remain=outbuffer.length();
   int total=remain;
   while( remain ) {
-    w=pSend((void*)localFD,outbuffer.c_str()+(total-remain),remain,ptheCookie);
+    w=pSend((void*)localFD,outbuffer.c_str()+(total-remain),remain);
     if( w<0 ) {
       err=w;
       remain=0;
@@ -276,6 +275,7 @@ int ehttp::out_commit(int header) {
 }
 
 int ehttp::init( void ) {
+  dprintf("init...\n");
   pSend=ehttpSend;
   pRecv=ehttpRecv;
   pPreRequestHandler=NULL;
@@ -294,13 +294,15 @@ void ehttp::set_prerequest_handler( void (*pHandler)(ehttp *obj)) {
   pPreRequestHandler=pHandler;
 }
 
-int ehttp:: read_header( int fd, map <string, string> *cookie, string &header, string &message ) {
+int ehttp:: read_header( int fd, string &header, string &message ) {
   header="";
   unsigned int offset=0;
+  dprintf("read_header...\n");
   while((offset=header.find("\r\n\r\n"))==string::npos ) {
+    //    dprintf("%d %d\n",header.length(), offset);
     input_buffer[0]=0;
-    int r=pRecv((void*)fd,&input_buffer[0],INPUT_BUFFER_SIZE,cookie);
-    if( r < 0 ) {
+    int r=pRecv((void*)fd,&input_buffer[0],INPUT_BUFFER_SIZE);
+    if( r <= 0 ) {
       return EHTTP_ERR_GENERIC;
     }
     input_buffer[r]=0;
@@ -319,11 +321,12 @@ int ehttp:: read_header( int fd, map <string, string> *cookie, string &header, s
 }
 
 
-int ehttp::parse_out_pairs(map <string, string> *cookie, string &remainder, map <string, string> &parms) {
+int ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
   string id;
   string value;
   int state=0;
 
+  dprintf("parse_out_pairs...\n");
   // run through the string and pick off the parms as we see them
   for (unsigned int i=0; i < remainder.length();) {
     switch (state) {
@@ -363,6 +366,9 @@ int ehttp::parse_out_pairs(map <string, string> *cookie, string &remainder, map 
   }
   // Add non-nil value to parm list
   if( state == 2 ) {
+    unescape(&id);
+    unescape(&value);
+    dprintf("Added %s to %s\r\n",id.c_str(),value.c_str());
     parms[id]=value;
     global_parms[id] = value;
   }
@@ -371,13 +377,12 @@ int ehttp::parse_out_pairs(map <string, string> *cookie, string &remainder, map 
 }
 
 
-int ehttp::parse_header(map<string, string> *cookie, string &header) {
-  assert(cookie != NULL);
-
+int ehttp::parse_header(string &header) {
   char *request=NULL;
   char *request_end=NULL;
   const char *pHeader=header.c_str();
 
+  dprintf("parse_header...\n");
   filename="";
   contentlength=0;
   requesttype=-1;
@@ -440,7 +445,7 @@ int ehttp::parse_header(map<string, string> *cookie, string &header) {
     // Yank out filename minus parms which follow
     string remainder=filename.substr(idx+1);
     filename=filename.substr(0,idx);
-    parse_out_pairs(cookie, remainder, url_parms);
+    parse_out_pairs(remainder, url_parms);
   }
 
   // Find request headers,
@@ -483,7 +488,7 @@ int ehttp::parse_header(map<string, string> *cookie, string &header) {
     }
   }
   // Parse Cookie
-  int ret = parse_cookie(cookie, request_header["COOKIE"]);
+  int ret = parse_cookie(request_header["COOKIE"]);
   if (ret != EHTTP_ERR_OK) {
     return ret;
   }
@@ -512,8 +517,7 @@ int ehttp::unescape(string *str) {
   return EHTTP_ERR_OK;
 }
 
-int ehttp::parse_cookie(map<string, string> *cookie, string &cookie_string) {
-  cookie->clear();
+int ehttp::parse_cookie(string &cookie_string) {
   vector<string> split_result;
   split(split_result, cookie_string, is_any_of(";"), token_compress_on);
   BOOST_FOREACH(string &pair, split_result) {
@@ -524,12 +528,12 @@ int ehttp::parse_cookie(map<string, string> *cookie, string &cookie_string) {
       trim(pair_split_result[1]);
       unescape(&pair_split_result[0]);
       unescape(&pair_split_result[1]);
-      (*cookie)[pair_split_result[0]] = pair_split_result[1];
+      ptheCookie[pair_split_result[0]] = pair_split_result[1];
     }
   }
   return EHTTP_ERR_OK;		
 }
-int ehttp:: parse_message( int fd, map <string, string> *cookie, string &message ) {
+int ehttp:: parse_message( int fd, string &message ) {
   if( !contentlength ) return EHTTP_ERR_OK;
 
   dprintf("Parsed content length:%d\r\n",contentlength);
@@ -547,7 +551,7 @@ int ehttp:: parse_message( int fd, map <string, string> *cookie, string &message
     dprintf("READ MORE MESSAGE...\r\n");
     while( contentlength > message.length() ) {
       input_buffer[0]=0;
-      int r=pRecv((void*)fd,&input_buffer[0],INPUT_BUFFER_SIZE,cookie);
+      int r=pRecv((void*)fd,&input_buffer[0],INPUT_BUFFER_SIZE);
       if( r < 0 )
         return EHTTP_ERR_GENERIC;
       message+=input_buffer;
@@ -560,20 +564,20 @@ int ehttp:: parse_message( int fd, map <string, string> *cookie, string &message
 
   // Got here, good, we got the entire reported msg length
   dprintf("Entire message is <%s>\r\n",message.c_str());
-  parse_out_pairs(cookie, message, post_parms);
+  parse_out_pairs(message, post_parms);
 
 
   return EHTTP_ERR_OK;
 }
 
 
-int ehttp::parse_request( int fd, map <string, string> *cookie ) {
+int ehttp::parse_request(int fd) {
   int (*pHandler)(ehttp *obj)=NULL;
 
+  dprintf("parse_request...\n");
   /* Things in the object which must be reset for each request */
   filename="";
   localFD=fd;
-  ptheCookie=cookie;
   filetype=EHTTP_TEXT_FILE;
   url_parms.clear();
   post_parms.clear();
@@ -585,9 +589,9 @@ int ehttp::parse_request( int fd, map <string, string> *cookie ) {
   string header;
   string message;
 
-  if( read_header(fd,cookie, header, message) == EHTTP_ERR_OK ) {
-    if( parse_header(cookie,header)  == EHTTP_ERR_OK ) {
-      if( parse_message(fd,cookie, message)  == EHTTP_ERR_OK ) {
+  if( read_header(fd, header, message) == EHTTP_ERR_OK ) {
+    if( parse_header(header)  == EHTTP_ERR_OK ) {
+      if( parse_message(fd, message)  == EHTTP_ERR_OK ) {
 
         // We are HTTP1.0 and need the content len to be valid
         // Opera Broswer
@@ -627,14 +631,14 @@ int ehttp::parse_request( int fd, map <string, string> *cookie ) {
   return EHTTP_ERR_GENERIC;
 }
 
-void ehttp::setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len, map<string, string> *cookie) ) {
+void ehttp::setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len) ) {
   if( pS )
     pSend=pS;
   else
     pSend=ehttpSend;
 }
 
-void ehttp::setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len, map<string, string> *cookie) ) {
+void ehttp::setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len) ) {
   if( pR )
     pRecv=pR;
   else
@@ -643,4 +647,14 @@ void ehttp::setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len, map<stri
 
 map <string, string> & ehttp::getResponseHeader( void ) {
   return response_header;
+}
+
+int ehttp::isClose() {
+  return fdState;
+}
+
+void ehttp::close() {
+  printf("Connection close... (%d)\n", localFD);
+  ::close(localFD);
+  fdState = 1;
 }

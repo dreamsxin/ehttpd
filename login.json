@@ -1,0 +1,2 @@
+{"result":"success", "messages":"success", "macaddress":"##macaddress##", "jsondata" :  { "filelist" : ["hwp","doc","docx","xls","xlsx","ppt","pptx","pdf","rtf","gul","gif","jpg","png","mp3","wav","txt","key","dwg"],
+"requesturl" : {"command" : "http://dlp.jiran.com:8080/request","polling" : "http://dlp.jiran.com:8080/polling","upload" : "http://dlp.jiran.com:8080/upload","download" : "http://dlp.jiran.com:8080/download"} } }
