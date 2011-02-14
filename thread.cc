@@ -19,6 +19,8 @@
 #include "./embedhttp.h"
 #include "./connection.h"
 #include "./dr_mysql.h"
+#include <boost/uuid/random_generator.hpp>
+#include <boost/uuid/uuid_io.hpp>
 
 using namespace std;
 
@@ -33,12 +35,12 @@ using namespace std;
 int cnt=0;
 int listenfd;
 int cookie_index=1;
-typedef shared_ptr<ehttp> ehttp_ptr;
 typedef struct {
   pthread_t tid;
   deque<int> *conn_pool;
 } Thread;
 
+typedef shared_ptr<ehttp> ehttp_ptr;
 
 class connection {
 public:
@@ -52,17 +54,17 @@ public:
 
   connection() {};
 
-  connection(ehttp *fd_request,
-    string command,
-		string requestpath,
-		string key,
-		ehttp *fd_polling,
-		int Status) : fd_request(fd_request),
-									command(command),
-									requestpath(requestpath),
-									key(key),
-									fd_polling(fd_polling),
-									status(status) {};
+  connection(ehttp_ptr fd_request,
+             string command,
+             string requestpath,
+             string key,
+             ehttp_ptr fd_polling,
+             int status) : fd_request(fd_request),
+                           command(command),
+                           requestpath(requestpath),
+                           key(key),
+                           fd_polling(fd_polling),
+                           status(status) {};
 };
 
 map <string, connection > connections;
@@ -87,18 +89,34 @@ void nonblock(int sockfd) {
 pthread_mutex_t new_connection_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void removeConnection(string userid) {
-  connections[userid].fd_polling->close();
-  connections[userid].fd_request->close();
+  dprintf("remove Connection\n");
+  if (connections.count(userid) == 0) {
+    return;
+  }
+  if (connections[userid].fd_polling != NULL) {
+    connections[userid].fd_polling->close(); 
+  }
+  if (connections[userid].fd_request != NULL) {
+    connections[userid].fd_request->close();
+  }
   connections.erase(userid);
 }
 
 void dieConnection(string userid, const string &error_message) {
-  connections[userid].fd_polling->error(error_message);
-  connections[userid].fd_request->error(error_message);
+  dprintf("Die Connection\n");
+  if (connections.count(userid) == 0) {
+    return;
+  }
+  if (connections[userid].fd_polling != NULL) {
+    connections[userid].fd_polling->error(error_message);
+  }
+  if (connections[userid].fd_request != NULL) {
+    connections[userid].fd_request->error(error_message);
+  }
   connections.erase(userid);
 }
 
-int handleDefault(ehttp *obj) {
+int handleDefault(ehttp_ptr obj) {
   obj->out_set_file("helloworld_template.html");
   obj->out_replace_token("MESSAGE", "Hello World");
   obj->out_replace();
@@ -107,7 +125,7 @@ int handleDefault(ehttp *obj) {
   return ret;
 }
 
-int login_handler(ehttp *obj) {
+int login_handler(ehttp_ptr obj) {
   dprintf("Login Handler!\n");
   if ((obj->getPostParams()).count("email") > 0) {
     dprintf("POST\n");
@@ -148,19 +166,13 @@ int login_handler(ehttp *obj) {
 }
 
 int execute_polling(string userid) {
-  if (connections[userid].fd_polling != NULL && connections[userid].fd_request != NULL) {
+  if (connections[userid].fd_polling.get() != NULL && connections[userid].fd_request.get() != NULL) {
     printf("Execute_polling : fd_polling = %d    <==>  fd_request = %d\n",connections[userid].fd_polling->getFD(), connections[userid].fd_request->getFD());
-    ehttp *obj = connections[userid].fd_polling.get();
+    ehttp_ptr obj = connections[userid].fd_polling;
     obj->out_set_file("polling.json");
     obj->out_replace_token("incrkey",connections[userid].key);
     obj->out_replace_token("command","getfolderlist");
     string requestpath = connections[userid].requestpath;
-    size_t found = -2;
-
-    while((found = requestpath.find('/', found+2)) != string::npos) {
-      requestpath = requestpath.substr(0, found) + "/" + requestpath.substr(found);
-    }
-
     obj->addslash(&requestpath);
 
     obj->out_replace_token("requestpath",requestpath);
@@ -168,7 +180,7 @@ int execute_polling(string userid) {
     int ret = obj->out_commit();
     //    delete connections[userid].fd_polling.get();
     connections[userid].fd_polling->close();
-    dprintf("Status change ( 1-> 2 )\n");
+    dprintf("(%d) Waiting uploading... Status change ( 1-> 2 )\n", obj->getFD());
     connections[userid].status = 2;
     return ret;
   }
@@ -176,66 +188,66 @@ int execute_polling(string userid) {
  return 0;
 }
 
-int request_handler( ehttp *obj ) {
+int request_handler( ehttp_ptr obj ) {
   string session_id = obj->ptheCookie["SESSIONID"];
   string userid = session[session_id]["user_id"];
 
   dprintf("Request Handler accepted...\n");
-  if (connections.count(userid) == 0) {
-    dprintf("connection created(%s)\n",userid.c_str());
-    connections[userid] = connection(NULL, "", "", "", NULL, 1);
+  if (connections.count(userid) > 0) {
+    removeConnection("die");
   }
+  dprintf("connection created(%s)\n",userid.c_str());
 
-  connections[userid].fd_request = ehttp_ptr(obj);
+  ehttp_ptr null_pointer;
+  connections[userid] = connection(ehttp_ptr(obj), "", "", "", null_pointer, 1);
   connections[userid].command = obj->getUrlParams()["command"];
   connections[userid].requestpath = obj->getUrlParams()["requestpath"];
-  connections[userid].key=userid;
+  boost::uuids::basic_random_generator<boost::mt19937> gen;
+  boost::uuids::uuid u = gen();
+  connections[userid].key = to_string(u);
   connections[userid].status=1;
   dprintf("Set request info (fd_request=%d, command=%s, requestpath=%s, key=%s,status=%d)\n",(connections[userid].fd_request)->getFD(), connections[userid].command.c_str(),connections[userid].requestpath.c_str(),connections[userid].key.c_str(), connections[userid].status);
   return execute_polling(userid);
 }
 
-int polling_handler( ehttp *obj ) {
+int polling_handler( ehttp_ptr obj ) {
   string session_id = obj->ptheCookie["SESSIONID"];
   string userid = session[session_id]["user_id"];
 
   dprintf("Polling Handler accepted...\n");
   if (connections.count(userid) > 0 && connections[userid].status == 2) {
-    dieConnection(userid, "Wrong polling");
-    return EHTTP_ERR_GENERIC;
-  }
-
-  if (connections.count(userid) == 0) {
+    connections[userid].fd_polling->error("Wrong polling");
+  } else if (connections.count(userid) == 0) {
     dprintf("connection created(%s)\n",userid.c_str());
-    connections[userid] = connection(NULL, "", "", "", NULL, 1);
+    ehttp_ptr null_pointer;
+    connections[userid] = connection(null_pointer, "", "", "", null_pointer, 1);
   }
   dprintf("Set agent info\n");
   connections[userid].fd_polling = ehttp_ptr(obj);
   return execute_polling(userid);
 }
 
-int upload_handler( ehttp *obj ) {
+int upload_handler( ehttp_ptr obj ) {
   string session_id = obj->ptheCookie["SESSIONID"];
   string userid = session[session_id]["user_id"];
 
   dprintf("Upload Handler accepted...\n");
   if (connections.count(userid) == 0) {
-    dprintf("connection created(%s)\n",userid.c_str());
-    connections[userid] = connection(NULL, "", "", "", NULL, 1);
+    return EHTTP_ERR_GENERIC;
   }
 
   dprintf("Set agent info\n");
   connections[userid].fd_polling = ehttp_ptr(obj);
   if (connections[userid].status == 1) {
-    dieConnection(userid, "Wrong polling");
+    obj->error("Wrong uploading _ status=1");
     return EHTTP_ERR_GENERIC;
   }
 
   string jsondata = obj->getPostParams()["jsondata"];
   if (connections[userid].key == obj->getPostParams()["incrkey"]) {
-    ehttp *request = connections[userid].fd_request.get();
+    ehttp_ptr request = connections[userid].fd_request;
     if (request->isClose()) {
-      dieConnection(userid, "Wrong upload2");
+      dieConnection(userid, "Wrong uploading _ request is closed");
       return EHTTP_ERR_GENERIC;
     }
     request->out_set_file("request.json");
@@ -287,7 +299,7 @@ void *main_thread(void *arg) {
     // cnt++;
     // dprintf("Start parsing(%d)\n",cnt);
     // dprintf("=============\n");
-    ehttp *http = new ehttp();
+    ehttp_ptr http = ehttp_ptr(new ehttp());
     http->init();
     http->add_handler("/polling", polling_handler);
     http->add_handler("/upload", upload_handler);
@@ -297,9 +309,9 @@ void *main_thread(void *arg) {
 
     http->parse_request(socket);
 
-    if (http->isClose()) {
-      delete http;
-    }
+    // if (http->isClose()) {
+    //   delete http;
+    // }
 
     // pthread_mutex_lock(&new_connection_mutex);
     // dprintf("=============\n");
@@ -358,7 +370,7 @@ int main() {
       perror("accept\n");
       exit(1);
     }
-    //    nonblock(clifd);
+    nonblock(clifd);
     pthread_mutex_lock(&new_connection_mutex);
     dprintf("Accepted... %d  / Queue size : %d / count : %d\n", clifd, conn_pool.size(),cnt);
     conn_pool.push_back(clifd);

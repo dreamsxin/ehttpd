@@ -241,7 +241,7 @@ int ehttp::out_commit(int header) {
 
   if( filetype == EHTTP_BINARY_FILE) {
     return out_commit_binary();
-	}
+  }
 
   if( header == EHTTP_HDR_OK) {
     string headr("HTTP/1.0 200 OK\r\n");
@@ -279,7 +279,7 @@ int ehttp::init(void) {
   return EHTTP_ERR_OK;
 }
 
-void ehttp::add_handler(char *filename, int (*pHandler)(ehttp *obj)) {
+void ehttp::add_handler(char *filename, int (*pHandler)(ehttp_ptr obj)) {
   if( !filename ) {
     pDefaultHandler = pHandler;
   } else {
@@ -287,7 +287,7 @@ void ehttp::add_handler(char *filename, int (*pHandler)(ehttp *obj)) {
 	}
 }
 
-void ehttp::set_prerequest_handler(void (*pHandler)(ehttp *obj)) {
+void ehttp::set_prerequest_handler(void (*pHandler)(ehttp_ptr obj)) {
   pPreRequestHandler = pHandler;
 }
 
@@ -580,7 +580,7 @@ int ehttp:: parse_message( int fd, string &message ) {
 
 
 int ehttp::parse_request(int fd) {
-  int (*pHandler)(ehttp *obj)=NULL;
+  int (*pHandler)(ehttp_ptr obj)=NULL;
 
   dprintf("parse_request...\n");
   /* Things in the object which must be reset for each request */
@@ -612,10 +612,10 @@ int ehttp::parse_request(int fd) {
         //Call the default handler if we didn't get the filename
         out_buffer_clear();
 
-        if( pPreRequestHandler ) pPreRequestHandler( this );
+        if( pPreRequestHandler ) pPreRequestHandler( shared_from_this() );
         if( !filename.length() ) {
           dprintf("%d Call default handler no filename \r\n",__LINE__);
-          return pDefaultHandler( this );
+          return pDefaultHandler( shared_from_this() );
         }
         else {
           //Lookup the handler function fo this filename
@@ -624,12 +624,12 @@ int ehttp::parse_request(int fd) {
           if( !pHandler ) {
             dprintf("%d Call default handler\r\n",__LINE__);
 
-            return pDefaultHandler( this );
+            return pDefaultHandler( shared_from_this() );
           }
           //Found a handler
           else {
             dprintf("%d Call user handler\r\n",__LINE__);
-            return pHandler( this );
+            return pHandler( shared_from_this() );
           }
         }
       }

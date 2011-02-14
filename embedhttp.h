@@ -47,6 +47,7 @@
 #include <netdb.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <crypt.h>
 #include <list>
 #include <string>
 #include <map>
@@ -57,6 +58,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/shared_ptr.hpp>
+#include <boost/enable_shared_from_this.hpp>
 
 using namespace std;
 using namespace boost;
@@ -84,8 +86,9 @@ ssize_t ehttpSend(void *ctx, const void *buf, size_t len);
 
 static int ehttp_inst_count = 0;
 
-class ehttp
+class ehttp: public boost::enable_shared_from_this<ehttp>
 {
+
   char input_buffer[INPUT_BUFFER_SIZE];
 
   int fdState;
@@ -108,9 +111,10 @@ class ehttp
   map <string, string> replace_token;
   map <string, string> response_header;
 
-  map <string, int (*)(ehttp *obj)> handler_map;
-  int (*pDefaultHandler)(ehttp *obj);
-  void (*pPreRequestHandler)(ehttp *obj);
+  typedef shared_ptr<ehttp> ehttp_ptr;
+  map <string, int (*)(ehttp_ptr obj)> handler_map;
+  int (*pDefaultHandler)(ehttp_ptr obj);
+  void (*pPreRequestHandler)(ehttp_ptr obj);
 
   ssize_t (*pRecv)(void *ctx, void *buf, size_t len);
   ssize_t (*pSend)(void *ctx, const void *buf, size_t len);
@@ -675,7 +679,7 @@ public:
 
 
    */
-  void add_handler( char *filename, int (*pHandler)(ehttp *obj));
+  void add_handler( char *filename, int (*pHandler)(ehttp_ptr obj));
 
 
   /****************************************************************
@@ -694,7 +698,7 @@ public:
    browser type in every request handler function
 
    */
-  void set_prerequest_handler( void (*pHandler)(ehttp *obj));
+  void set_prerequest_handler( void (*pHandler)(ehttp_ptr obj));
 
   /****************************************************************
    Member Function:
