@@ -2,6 +2,14 @@
 #include <gtest/gtest.h>
 #include <iostream>
 
+TEST(unescape, simple1) {
+  ehttp mock;
+  string a = "c:\\test";
+  string b = "c:\\\\test";
+  mock.addslash(&a);
+  EXPECT_EQ(a, b);
+}
+
 TEST(unescape, practice) {
   ehttp mock;
   string tmp = "command=getfolderlist&incrkey=39&jsondata={ \

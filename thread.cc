@@ -22,7 +22,7 @@
 
 using namespace std;
 
-#define MAX_THREAD 100
+#define MAX_THREAD 20
 #define PORT 8080
 
 #define dprintf printf
@@ -39,31 +39,34 @@ typedef struct {
   deque<int> *conn_pool;
 } Thread;
 
+
 class connection {
 public:
+  ehttp_ptr fd_polling;
   ehttp_ptr fd_request;
+
   string command;
   string requestpath;
   string key;
-  ehttp_ptr fd_polling;
   int status;
+
   connection() {};
+
   connection(ehttp *fd_request,
-             string command,
-             string requestpath,
-             string key,
-             ehttp *fd_polling,
-             int status) : fd_request(fd_request),
-                           command(command),
-                           requestpath(requestpath),
-                           key(key),
-                           fd_polling(fd_polling),
-                           status(status) {};
+    string command,
+		string requestpath,
+		string key,
+		ehttp *fd_polling,
+		int Status) : fd_request(fd_request),
+									command(command),
+									requestpath(requestpath),
+									key(key),
+									fd_polling(fd_polling),
+									status(status) {};
 };
 
 map <string, connection > connections;
 map <string, map<string, string> > session;
-
 
 DrMysql db;
 
@@ -89,9 +92,15 @@ void removeConnection(string userid) {
   connections.erase(userid);
 }
 
+void dieConnection(string userid, const string &error_message) {
+  connections[userid].fd_polling->error(error_message);
+  connections[userid].fd_request->error(error_message);
+  connections.erase(userid);
+}
+
 int handleDefault(ehttp *obj) {
   obj->out_set_file("helloworld_template.html");
-  obj->out_replace_token("MESSAGE","Hello World");
+  obj->out_replace_token("MESSAGE", "Hello World");
   obj->out_replace();
   int ret = obj->out_commit();
   obj->close();
@@ -112,18 +121,23 @@ int login_handler(ehttp *obj) {
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
       dprintf("%s login success\n",user_id.c_str());
+
     } else if (installkey.length() > 0 && db.login(email, installkey, &user_id, &macaddress)) {
       obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + user_id;
       session[user_id]["user_id"] = user_id;
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
       dprintf("%s login success\n",user_id.c_str());
+
     } else {
-      obj->out_set_file("fail.json");
-      dprintf("%s login fail\n",user_id.c_str());
+      string msg = user_id + " login fail";
+      obj->error(msg);
+
     }
     dprintf("mac : %s\n",macaddress.c_str());
+
   } else {
+
     dprintf("GET\n");
     obj->out_set_file("login_page.html");
   }
@@ -142,8 +156,13 @@ int execute_polling(string userid) {
     obj->out_replace_token("command","getfolderlist");
     string requestpath = connections[userid].requestpath;
     size_t found = -2;
-    while((found = requestpath.find('/', found+2)) != string::npos)
+
+    while((found = requestpath.find('/', found+2)) != string::npos) {
       requestpath = requestpath.substr(0, found) + "/" + requestpath.substr(found);
+    }
+
+    obj->addslash(&requestpath);
+
     obj->out_replace_token("requestpath",requestpath);
     obj->out_replace();
     int ret = obj->out_commit();
@@ -153,7 +172,7 @@ int execute_polling(string userid) {
     connections[userid].status = 2;
     return ret;
   }
- 
+
  return 0;
 }
 
@@ -182,14 +201,10 @@ int polling_handler( ehttp *obj ) {
 
   dprintf("Polling Handler accepted...\n");
   if (connections.count(userid) > 0 && connections[userid].status == 2) {
-    dprintf("Wrong polling\n");
-    obj->out_set_file("errormessage.json");
-    obj->out_replace_token("fail","wrong polling");
-    obj->out_replace();
-    int ret = obj->out_commit();
-    removeConnection(userid);
+    dieConnection(userid, "Wrong polling");
     return EHTTP_ERR_GENERIC;
   }
+
   if (connections.count(userid) == 0) {
     dprintf("connection created(%s)\n",userid.c_str());
     connections[userid] = connection(NULL, "", "", "", NULL, 1);
@@ -208,36 +223,30 @@ int upload_handler( ehttp *obj ) {
     dprintf("connection created(%s)\n",userid.c_str());
     connections[userid] = connection(NULL, "", "", "", NULL, 1);
   }
+
   dprintf("Set agent info\n");
   connections[userid].fd_polling = ehttp_ptr(obj);
   if (connections[userid].status == 1) {
-    dprintf("Wrong upload\n");
-    obj->out_set_file("errormessage.json");
-    obj->out_replace_token("fail","wrong upload");
-    obj->out_replace();
-    int ret = obj->out_commit();
-    removeConnection(userid);
+    dieConnection(userid, "Wrong polling");
     return EHTTP_ERR_GENERIC;
   }
+
   string jsondata = obj->getPostParams()["jsondata"];
   if (connections[userid].key == obj->getPostParams()["incrkey"]) {
     ehttp *request = connections[userid].fd_request.get();
     if (request->isClose()) {
-      dprintf("Wrong upload2\n");
-      obj->out_set_file("errormessage.json");
-      obj->out_replace_token("fail","wrong upload2");
-      obj->out_replace();
-      int ret = obj->out_commit();
-      removeConnection(userid);
+      dieConnection(userid, "Wrong upload2");
       return EHTTP_ERR_GENERIC;
     }
     request->out_set_file("request.json");
+
     dprintf("jsondata : %s\n",jsondata.c_str());
     request->out_replace_token("jsondata",jsondata);
     request->out_replace();
     request->out_commit();
     //    delete request;
     request->close();
+
     obj->out_set_file("polling.json");
     obj->out_replace_token("incrkey","");
     obj->out_replace_token("command","");
@@ -250,13 +259,8 @@ int upload_handler( ehttp *obj ) {
     connections.erase(userid);
     return ret;
   } else {
-    obj->out_set_file("helloworld_template.html");
-    obj->out_replace_token("MESSAGE","FAIL : Key doesn't match!");
-    obj->out_replace();
-    int ret = obj->out_commit();
-    //    delete obj;
-    obj->close();
-    return ret;
+    obj->error("FAIL : Key doesn't match!");
+    return EHTTP_ERR_GENERIC;
   }
 }
 
@@ -267,6 +271,7 @@ void *main_thread(void *arg) {
     // fetch a new job.
     int socket;
     for(;;) {
+      sleep(1);
       pthread_mutex_lock(&new_connection_mutex);
       if (!thread->conn_pool->empty()) {
         socket = thread->conn_pool->front();
@@ -291,6 +296,11 @@ void *main_thread(void *arg) {
     http->add_handler(NULL, handleDefault);
 
     http->parse_request(socket);
+
+    if (http->isClose()) {
+      delete http;
+    }
+
     // pthread_mutex_lock(&new_connection_mutex);
     // dprintf("=============\n");
     // cnt--;

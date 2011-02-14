@@ -70,13 +70,11 @@ bool ehttp::isPostRequest(void) {
 }
 
 
-string & ehttp::getURL(void) {
+string &ehttp::getURL(void) {
   return url;
 }
 
-
-
-string & ehttp::getFilename( void ) {
+string &ehttp::getFilename( void ) {
   return filename;
 }
 
@@ -191,8 +189,7 @@ int ehttp::out_replace(void) {
             outbuffer+=replace_token[token];
             dprintf("Replacing token [%s] with [%s]\r\n",token.c_str(),(replace_token[token]).c_str());
             state=0;
-          }
-          else {
+          } else {
             dprintf("(%d)Token Parse Error:%s \r\n",line,token.c_str());
             fseek(f,0,SEEK_END);
             err=-2;
@@ -212,23 +209,23 @@ int ehttp::out_replace(void) {
 
 
 int ehttp::out_commit_binary(void) {
-    int err=0;
-    FILE *f=fopen(outfilename.c_str(),"rb");
+    int err = 0;
+    FILE *f = fopen(outfilename.c_str(), "rb");
     char buffer[10240];
-    if(f) {
-    while( !feof(f) ) {
-      int r=fread(buffer,1,sizeof(10240),f);
-      if( r>0 ) {
-        int remain=r;
-        int total=remain;
-        while( remain ) {
-          int w=pSend((void*)localFD,buffer+(total-remain),remain);
-          if( w<0 ) {
-            err=w;
-            remain=0;
-            fseek(f,SEEK_END,0L);
+    if (f) {
+    while(!feof(f)) {
+      int r = fread(buffer, 1, sizeof(10240), f);
+      if (r > 0) {
+        int remain = r;
+        int total = remain;
+        while(remain) {
+          int w = pSend((void *)sock, buffer + (total - remain), remain);
+          if(w < 0) {
+            err = w;
+            remain = 0;
+            fseek(f, SEEK_END, 0L);
           } else {
-            remain-=w;
+            remain -= w;
           }
         }
       }
@@ -240,91 +237,90 @@ int ehttp::out_commit_binary(void) {
 
 int ehttp::out_commit(int header) {
   int w;
-  int err=0;
+  int err = 0;
 
-  if( filetype == EHTTP_BINARY_FILE )
+  if( filetype == EHTTP_BINARY_FILE) {
     return out_commit_binary();
+	}
 
-
-  if( header == EHTTP_HDR_OK ) {
+  if( header == EHTTP_HDR_OK) {
     string headr("HTTP/1.0 200 OK\r\n");
     map <string, string>::const_iterator iter;
-    iter=response_header.begin();
+    iter = response_header.begin();
     //Send out all the headers you want
-    while( iter != response_header.end() ) {
-      headr+=iter->first+string(": ")+iter->second+string("\r\n");
+    while(iter != response_header.end()) {
+      headr += iter->first+string(": ") + iter->second+string("\r\n");
       ++iter;
     }
-    outbuffer=headr+string("\r\n")+outbuffer;
-  } else if( header == EHTTP_LENGTH_REQUIRED ) {
+    outbuffer = headr + string("\r\n") + outbuffer;
+  } else if(header == EHTTP_LENGTH_REQUIRED) {
     outbuffer=string("HTTP/1.0 411 Length Required\r\n\r\n");
   }
 
-  int remain=outbuffer.length();
-  int total=remain;
-  while( remain ) {
-    w=pSend((void*)localFD,outbuffer.c_str()+(total-remain),remain);
-    if( w<0 ) {
-      err=w;
-      remain=0;
+  int remain = outbuffer.length();
+  int total = remain;
+  while(remain) {
+    w=pSend((void *)sock, outbuffer.c_str() + (total - remain), remain);
+    if(w < 0) {
+      err = w;
+      remain = 0;
     } else {
-      remain-=w;
+      remain -= w;
     }
   }
   return err;
 }
 
-int ehttp::init( void ) {
+int ehttp::init(void) {
   dprintf("init...\n");
-  pSend=ehttpSend;
-  pRecv=ehttpRecv;
-  pPreRequestHandler=NULL;
+  pSend = ehttpSend;
+  pRecv = ehttpRecv;
+  pPreRequestHandler = NULL;
   return EHTTP_ERR_OK;
 }
 
-
-void ehttp::add_handler( char *filename, int (*pHandler)(ehttp *obj)) {
-  if( !filename )
-    pDefaultHandler=pHandler;
-  else
-    handler_map[filename]=pHandler;
+void ehttp::add_handler(char *filename, int (*pHandler)(ehttp *obj)) {
+  if( !filename ) {
+    pDefaultHandler = pHandler;
+  } else {
+    handler_map[filename] = pHandler;
+	}
 }
 
-void ehttp::set_prerequest_handler( void (*pHandler)(ehttp *obj)) {
-  pPreRequestHandler=pHandler;
+void ehttp::set_prerequest_handler(void (*pHandler)(ehttp *obj)) {
+  pPreRequestHandler = pHandler;
 }
 
-int ehttp:: read_header( int fd, string &header, string &message ) {
+int ehttp::read_header(int fd, string &header, string &message ) {
   header="";
-  unsigned int offset=0;
+  unsigned int offset = 0;
   dprintf("read_header...\n");
-  while((offset=header.find("\r\n\r\n"))==string::npos ) {
+  while((offset = header.find("\r\n\r\n")) == string::npos) {
     //    dprintf("%d %d\n",header.length(), offset);
-    input_buffer[0]=0;
-    int r=pRecv((void*)fd,&input_buffer[0],INPUT_BUFFER_SIZE);
-    if( r <= 0 ) {
+    input_buffer[0] = 0;
+    int r=pRecv((void*)fd, &input_buffer[0], INPUT_BUFFER_SIZE);
+    if(r <= 0) {
       return EHTTP_ERR_GENERIC;
     }
-    input_buffer[r]=0;
+    input_buffer[r] = 0;
     header+=input_buffer;
   }
-  message=header.substr(offset+4);
+  message=header.substr(offset + 4);
   /* Fix the case where only "GET /xxxxx HTTP1.0\r\n\r\n" is sent (no other headers)*/
   if(offset == header.find("\r\n")) {
-    header=header.substr(0,offset+2);
+    header = header.substr(0, offset + 2);
   } else {
-    header=header.substr(0,offset);
+    header = header.substr(0, offset);
   }
-  dprintf("Header:-->%s<--\r\n",header.c_str());
-  dprintf("Message:-->%s<--\r\n",message.c_str());
+  dprintf("Header:-->%s<--\r\n", header.c_str());
+  dprintf("Message:-->%s<--\r\n", message.c_str());
   return EHTTP_ERR_OK;
 }
-
 
 int ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
   string id;
   string value;
-  int state=0;
+  int state = 0;
 
   dprintf("parse_out_pairs...\n");
   // run through the string and pick off the parms as we see them
@@ -492,14 +488,14 @@ int ehttp::parse_header(string &header) {
   if (ret != EHTTP_ERR_OK) {
     return ret;
   }
-  
+
   // Find content length
   contentlength=atoi (request_header["CONTENT-LENGTH"].c_str());
-  return EHTTP_ERR_OK;		
+  return EHTTP_ERR_OK;
 }
 
 int ehttp::getFD() {
-  return localFD;
+  return sock;
 }
 
 int ehttp::unescape(string *str) {
@@ -517,6 +513,18 @@ int ehttp::unescape(string *str) {
   return EHTTP_ERR_OK;
 }
 
+int ehttp::addslash(string *str) {
+  string tmp;
+  for (int i = 0; i < str->length(); ++i) {
+    if (str->at(i) == '\\') {
+      tmp.push_back('\\');
+    }
+    tmp.push_back(str->at(i));
+  }
+  *str = tmp;
+  return true;
+}
+
 int ehttp::parse_cookie(string &cookie_string) {
   vector<string> split_result;
   split(split_result, cookie_string, is_any_of(";"), token_compress_on);
@@ -531,7 +539,7 @@ int ehttp::parse_cookie(string &cookie_string) {
       ptheCookie[pair_split_result[0]] = pair_split_result[1];
     }
   }
-  return EHTTP_ERR_OK;		
+  return EHTTP_ERR_OK;
 }
 int ehttp:: parse_message( int fd, string &message ) {
   if( !contentlength ) return EHTTP_ERR_OK;
@@ -577,7 +585,7 @@ int ehttp::parse_request(int fd) {
   dprintf("parse_request...\n");
   /* Things in the object which must be reset for each request */
   filename="";
-  localFD=fd;
+  sock=fd;
   filetype=EHTTP_TEXT_FILE;
   url_parms.clear();
   post_parms.clear();
@@ -654,7 +662,18 @@ int ehttp::isClose() {
 }
 
 void ehttp::close() {
-  printf("Connection close... (%d)\n", localFD);
-  ::close(localFD);
+  printf("Connection close... (%d)\n", sock);
+  ::close(sock);
   fdState = 1;
+}
+
+int ehttp::error(const string &error_message) {
+  dprintf(error_message.c_str());
+  dprintf("\n");
+  out_set_file("errormessage.json");
+  out_replace_token("fail", error_message);
+  out_replace();
+  out_commit();
+  close();
+  return EHTTP_ERR_GENERIC;
 }

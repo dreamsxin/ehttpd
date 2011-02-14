@@ -51,6 +51,7 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <iostream>
 #include <sstream>
 #include <boost/foreach.hpp>
 #include <boost/algorithm/string.hpp>
@@ -81,12 +82,14 @@ ssize_t ehttpSend(void *ctx, const void *buf, size_t len);
  EasyHTTPD Parser Class
  */
 
+static int ehttp_inst_count = 0;
+
 class ehttp
 {
   char input_buffer[INPUT_BUFFER_SIZE];
 
   int fdState;
-  int localFD;
+  int sock;
   int filetype;
   int requesttype;
   unsigned int contentlength;
@@ -96,7 +99,6 @@ class ehttp
   string url;                //the url
   string outfilename;            //template filename
   string outbuffer;            //response output buffer
-
 
 
   map <string, string> url_parms;
@@ -124,6 +126,7 @@ public:
 
   int getFD();
   int unescape(string *str);
+  int addslash(string *str);
   int parse_cookie(string &cookie_string);
 
   /****************************************************************
@@ -133,15 +136,23 @@ public:
    */
   ehttp(){
     fdState=0;
+    ++ehttp_inst_count;
+    cout << "new ehttp() : " << ehttp_inst_count <<  endl;
+    response_header["Content-Type"] = "text/html; charset=utf-8";
   };
 
   /*
    Destructor: ehttp
    Does nothing exciting.
    */
-  ~ehttp(){};
+  ~ehttp(){
+    --ehttp_inst_count;
+    cout << "~ehttp() : " << ehttp_inst_count <<  endl;
+    if (!isClose())
+      error("Critial Error");
+  };
 
-  
+
 
   /****************************************************************
    Member Function: int init( void );
@@ -755,6 +766,8 @@ public:
 
   void close();
   int isClose();
+
+  int error(const string &error_message);
 };
 
 
