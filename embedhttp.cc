@@ -289,28 +289,49 @@ void ehttp::set_prerequest_handler(void (*pHandler)(ehttp_ptr obj)) {
   pPreRequestHandler = pHandler;
 }
 
-int ehttp::read_header(int fd, string &header, string &message ) {
-  header="";
+int ehttp::read_header(string *header) {
+  *header = "";
   unsigned int offset = 0;
   log(0) << "read_header..." << endl;
-  while((offset = header.find("\r\n\r\n")) == string::npos) {
-    input_buffer[0] = 0;
-    int r=pRecv((void*)fd, &input_buffer[0], INPUT_BUFFER_SIZE);
+
+  Byte buffer[INPUT_BUFFER_SIZE];
+
+  while((offset = header->find("\r\n\r\n")) == string::npos) {
+    int r = pRecv((void*)sock, buffer, INPUT_BUFFER_SIZE - 1);
     if(r <= 0) {
       return EHTTP_ERR_GENERIC;
     }
-    input_buffer[r] = 0;
-    header+=input_buffer;
+
+    dataQueue.push_back(ByteVector(buffer, buffer + r));
+
+    buffer[r] = 0;
+    header->append(buffer);
   }
-  message=header.substr(offset + 4);
-  /* Fix the case where only "GET /xxxxx HTTP1.0\r\n\r\n" is sent (no other headers)*/
-  if(offset == header.find("\r\n")) {
-    header = header.substr(0, offset + 2);
-  } else {
-    header = header.substr(0, offset);
+
+  offset += 4;  // \r\n\r\n
+  *header = header->substr(0, offset);
+
+  for (int size = 0; !dataQueue.empty(); ) {
+    ByteVector vec = dataQueue.front();
+    dataQueue.pop_front();
+
+    if (size + vec.size() > offset) {
+      vec.erase(vec.begin(), vec.begin() + offset - size);
+      dataQueue.push_front(vec);
+      break;
+    }
+    size += vec.size();
   }
-  log(0) << "Header:-->" << header << "<--" << endl;
-  log(0) << "Message:-->" << message << "<--" << endl;
+
+  log(0) << "Header:-->" << *header << "<--" << endl;
+
+  if (!dataQueue.empty()) {
+    ByteVector vec = dataQueue.front();
+    string s(vec.begin(), vec.end());
+    log(0) << "Remain Data:-->" << s << "<--" << endl;
+
+  }
+
   return EHTTP_ERR_OK;
 }
 
@@ -512,7 +533,7 @@ int ehttp::unescape(string *str) {
 
 int ehttp::addslash(string *str) {
   string tmp;
-  for (int i = 0; i < str->length(); ++i) {
+  for (unsigned int i = 0; i < str->length(); ++i) {
     if (str->at(i) == '\\') {
       tmp.push_back('\\');
     }
@@ -538,10 +559,18 @@ int ehttp::parse_cookie(string &cookie_string) {
   }
   return EHTTP_ERR_OK;
 }
-int ehttp:: parse_message( int fd, string &message ) {
+int ehttp:: parse_message() {
   if( !contentlength ) return EHTTP_ERR_OK;
 
   log(0) << "Parsed content length:" << contentlength << endl;
+
+  string message;
+  while(!dataQueue.empty()) {
+    ByteVector vec = dataQueue.front();
+    message.append(string(vec.begin(), vec.end()));
+    dataQueue.pop_front();
+  }
+
   log(0) << "Actual message length read in:" << message.length() << endl;
 
   // We got more than reported,so now what, truncate?
@@ -549,31 +578,33 @@ int ehttp:: parse_message( int fd, string &message ) {
   // So we'll hit this case often
   // ...
   // there is a possible strange bug here, need to really validate before truncate
-  if( contentlength < message.length() )
-    message=message.substr(0,contentlength );
-  // Need to read more in
-  else if( contentlength > message.length() ) {
-    log(0) << "READ MORE MESSAGE..." << endl;
-    while( contentlength > message.length() ) {
-      input_buffer[0]=0;
-      int r=pRecv((void*)fd,&input_buffer[0],INPUT_BUFFER_SIZE);
-      if( r < 0 )
-        return EHTTP_ERR_GENERIC;
-      log(0) << "r=" << r << ", remain=" << contentlength-message.length() << ", buffersize=" << strlen(input_buffer) << endl;
-      input_buffer[r]='\0';
-      log(0) << "-->" << input_buffer << "<--" << endl;
-      message+=input_buffer;
-    }
-    // Just in case we read too much...
-    if( contentlength < message.length() )
-      message=message.substr(0,contentlength );
 
+  if(contentlength > message.length()) {
+    log(0) << "READ MORE MESSAGE..." << endl;
+
+    Byte buffer[INPUT_BUFFER_SIZE];
+    while(contentlength > message.length()) {
+      int r = pRecv((void*)sock, buffer, INPUT_BUFFER_SIZE);
+      if(r < 0) {
+        return EHTTP_ERR_GENERIC;
+      }
+      log(0) << "r=" << r << ", remain=" << (contentlength - message.length())
+             << ", buffersize=" << strlen(buffer) << endl;
+
+      buffer[r]='\0';
+      log(0) << "-->" << buffer << "<--" << endl;
+      message.append(buffer);
     }
+  }
+
+  // Just in case we read too much...
+  if( contentlength < message.length() ) {
+    message = message.substr(0, contentlength);
+  }
 
   // Got here, good, we got the entire reported msg length
   log(0) << "Entire message is <" << message << ">" << endl;
   parse_out_pairs(message, post_parms);
-
 
   return EHTTP_ERR_OK;
 }
@@ -597,44 +628,48 @@ int ehttp::parse_request(int fd) {
   string header;
   string message;
 
-  if( read_header(fd, header, message) == EHTTP_ERR_OK ) {
-    if( parse_header(header)  == EHTTP_ERR_OK ) {
-      if( parse_message(fd, message)  == EHTTP_ERR_OK ) {
-
-        // We are HTTP1.0 and need the content len to be valid
-        // Opera Broswer
-        if( contentlength==0 && requesttype==EHTTP_REQUEST_POST ) {
-          log(0) << "Content Length is 0 and requesttype is EHTTP_REQUEST_POST" << endl;
-          return out_commit(EHTTP_LENGTH_REQUIRED);
-        }
-
-
-        //Call the default handler if we didn't get the filename
-        out_buffer_clear();
-
-        if( pPreRequestHandler ) pPreRequestHandler( shared_from_this() );
-        if( !filename.length() ) {
-          log(0) << __LINE__ << " Call default handler no filename" << endl;
-          return pDefaultHandler( shared_from_this() );
-        }
-        else {
-          //Lookup the handler function fo this filename
-          log(0) << "filename : " << filename << endl;
-          pHandler=handler_map[filename];
-          //Call the default handler if we didn't get the filename
-          if( !pHandler ) {
-            log(0) << __LINE__ << " Call default handler" << endl;
-            return pDefaultHandler( shared_from_this() );
-          } else {
-            log(0) << __LINE__ << " Call user handler" << endl;
-            return pHandler( shared_from_this() );
-          }
-        }
-      }
-    }
+  if(read_header(&header) != EHTTP_ERR_OK) {
+    log(0) << "Error parsing request" << endl;
+    return EHTTP_ERR_GENERIC;
   }
-  log(0) << "Error parsing request" << endl;
-  return EHTTP_ERR_GENERIC;
+
+  if(parse_header(header) != EHTTP_ERR_OK) {
+    log(0) << "Error parsing request" << endl;
+    return EHTTP_ERR_GENERIC;
+  }
+
+  if(parse_message() != EHTTP_ERR_OK) {
+    log(0) << "Error parsing request" << endl;
+    return EHTTP_ERR_GENERIC;
+  }
+
+  // We are HTTP1.0 and need the content len to be valid
+  // Opera Broswer
+  if( contentlength==0 && requesttype==EHTTP_REQUEST_POST ) {
+    log(0) << "Content Length is 0 and requesttype is EHTTP_REQUEST_POST" << endl;
+    return out_commit(EHTTP_LENGTH_REQUIRED);
+  }
+
+  //Call the default handler if we didn't get the filename
+  out_buffer_clear();
+
+  if( pPreRequestHandler ) pPreRequestHandler( shared_from_this() );
+  if( !filename.length() ) {
+    log(0) << __LINE__ << " Call default handler no filename" << endl;
+    return pDefaultHandler( shared_from_this() );
+  }
+
+  //Lookup the handler function fo this filename
+  log(0) << "filename : " << filename << endl;
+  pHandler=handler_map[filename];
+  //Call the default handler if we didn't get the filename
+  if( !pHandler ) {
+    log(0) << __LINE__ << " Call default handler" << endl;
+    return pDefaultHandler( shared_from_this() );
+  }
+
+  log(0) << __LINE__ << " Call user handler" << endl;
+  return pHandler( shared_from_this() );
 }
 
 void ehttp::setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len) ) {

@@ -80,7 +80,7 @@ ssize_t ehttpSend(void *ctx, const void *buf, size_t len);
 
 
 
-#define INPUT_BUFFER_SIZE  10240
+#define INPUT_BUFFER_SIZE 10240
 
 /*
  Class: ehttp
@@ -89,17 +89,19 @@ ssize_t ehttpSend(void *ctx, const void *buf, size_t len);
 
 static int ehttp_inst_count = 0;
 
-class ehttp: public boost::enable_shared_from_this<ehttp>
-{
+typedef char Byte;
+typedef std::vector<Byte> ByteVector;
+typedef std::deque<ByteVector> DataQueue;
 
-  char input_buffer[INPUT_BUFFER_SIZE];
+class ehttp: public boost::enable_shared_from_this<ehttp> {
+
+  DataQueue dataQueue;
 
   int fdState;
   int sock;
   int filetype;
   int requesttype;
   unsigned int contentlength;
-
 
   string filename;            //filename of the url
   string url;                //the url
@@ -122,10 +124,10 @@ class ehttp: public boost::enable_shared_from_this<ehttp>
   ssize_t (*pRecv)(void *ctx, void *buf, size_t len);
   ssize_t (*pSend)(void *ctx, const void *buf, size_t len);
 
-  int read_header( int fd, string &header, string &message );
-  int parse_header(string &header );
+  int read_header(string *header);
+  int parse_header(string &header);
   int parse_out_pairs(string &remainder, map <string, string> &parms );
-  int parse_message( int fd, string &message );
+  int parse_message();
   void out_buffer_clear(void);
 
 public:
