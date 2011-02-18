@@ -11,19 +11,19 @@ public:
   string command;
   string requestpath;
   string key;
-  int status;
+  string status;
 
   connection() {};
 
   connection(ehttp *fd_request,
-    string command,
-		string requestpath,
-		string key,
-		ehttp *fd_polling,
-		int Status) : fd_request(fd_request),
-									command(command),
-									requestpath(requestpath),
-									key(key),
-									fd_polling(fd_polling),
-									status(status) {};
+             string command,
+             string requestpath,
+             string key,
+             ehttp *fd_polling,
+             string status) : fd_request(fd_request),
+                           command(command),
+                           requestpath(requestpath),
+                           key(key),
+                           fd_polling(fd_polling),
+                           status(status) {};
 };

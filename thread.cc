@@ -64,6 +64,17 @@ void loginFail (ehttp_ptr obj) {
   obj->close();
 }
 
+void safeClose(string userid, ehttp *obj) {
+  obj->close();
+  if (connections[userid].fd_request.get() == obj) {
+    // Request
+    connections[userid].fd_request.reset();
+  } else if (connections[userid].fd_polling.get() == obj) {
+    // Polling
+    connections[userid].fd_polling.reset();
+  }
+}
+
 pthread_mutex_t new_connection_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void removeConnection(string userid) {
@@ -159,11 +170,9 @@ int execute_polling(string userid) {
     obj->out_replace_token("requestpath", requestpath);
     obj->out_replace();
     int ret = obj->out_commit();
-    obj->close();
-    log(0) << "(" << obj->getFD() << ") Waiting uploading... Status change ( 1-> 2 )" << endl;
-    connections[userid].status = 2;
-
-    connections[userid].fd_polling.reset();
+    log(0) << "(" << obj->getFD() << ") Waiting uploading... Status change ( polling -> uploading )" << endl;
+    connections[userid].status = "uploading";
+    safeClose(userid, obj.get());
     return ret;
   }
 
@@ -183,7 +192,7 @@ int request_handler( ehttp_ptr obj ) {
     obj->out_replace_token("jsondata","");
     obj->out_replace();
     obj->out_commit();
-    obj->close();
+    safeClose(userid, obj.get());
     return EHTTP_ERR_OK;
   }
 
@@ -199,7 +208,7 @@ int request_handler( ehttp_ptr obj ) {
   boost::uuids::basic_random_generator<boost::mt19937> gen;
   boost::uuids::uuid u = gen();
   connections[userid].key = to_string(u);
-  connections[userid].status = 1;
+  connections[userid].status = "polling";
   log(0) << "Set request info (fd_request=" << (connections[userid].fd_request)->getFD() << ", command=" << connections[userid].command << ", requestpath=" << connections[userid].requestpath <<", key=" << connections[userid].key << ",status=" << connections[userid].status << ")" << endl;
   return execute_polling(userid);
 }
@@ -219,7 +228,7 @@ int polling_handler( ehttp_ptr obj ) {
   }
   //  dprintf("connection created(%s)\n", userid.c_str());
   connections[userid].fd_polling = ehttp_ptr(obj);
-  connections[userid].status = 1;
+  connections[userid].status = "polling";
   return execute_polling(userid);
 }
 
@@ -239,8 +248,8 @@ int upload_handler( ehttp_ptr obj ) {
 
   log(0) << "Set agent info" << endl;
   connections[userid].fd_polling = ehttp_ptr(obj);
-  if (connections[userid].status == 1) {
-    obj->error("Wrong uploading _ status=1");
+  if (connections[userid].status == "polling") {
+    obj->error("Wrong uploading _ status=polling");
     return EHTTP_ERR_GENERIC;
   }
 
@@ -257,7 +266,7 @@ int upload_handler( ehttp_ptr obj ) {
     request->out_replace_token("jsondata",jsondata);
     request->out_replace();
     request->out_commit();
-    request->close();
+    safeClose(userid, request.get());
 
     obj->out_set_file("polling.json");
     obj->out_replace_token("incrkey","");
@@ -265,7 +274,7 @@ int upload_handler( ehttp_ptr obj ) {
     obj->out_replace_token("requestpath","");
     obj->out_replace();
     int ret = obj->out_commit();
-    obj->close();
+    safeClose(userid, obj.get());
 
     log(0) << "Connection close..." << endl;
     connections.erase(userid);
