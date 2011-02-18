@@ -42,15 +42,13 @@
 #include "./embedhttp.h"
 #include <assert.h>
 
-#define dprintf null_printf
-
-int null_printf(const char *format, ...) {
-  return 0;
-}
-
-
 ssize_t ehttpRecv(void *fd, void *buf, size_t len) {
-  return recv((int)fd,buf,len,0);
+  int ret = recv((int)fd,buf,len,0);
+  if (ret == -1) {
+    int nError = errno;
+    log(0) << "RECV ERROR!! CODE = " <<  nError << endl;
+  }
+  return ret;
 }
 
 ssize_t ehttpSend(void *fd, const void *buf, size_t len) {
@@ -187,10 +185,10 @@ int ehttp::out_replace(void) {
           if( c == '#' ) {
             state=4;
             outbuffer+=replace_token[token];
-            dprintf("Replacing token [%s] with [%s]\r\n",token.c_str(),(replace_token[token]).c_str());
+            log(0) << "Replacing token [" << token << "] with [" << replace_token[token] << "]" << endl;
             state=0;
           } else {
-            dprintf("(%d)Token Parse Error:%s \r\n",line,token.c_str());
+            log(0) << "(" << line << ")Token Parse Error:" << token << endl;
             fseek(f,0,SEEK_END);
             err=-2;
             state=99;
@@ -272,7 +270,7 @@ int ehttp::out_commit(int header) {
 }
 
 int ehttp::init(void) {
-  dprintf("init...\n");
+  log(0) << "init..." << endl;
   pSend = ehttpSend;
   pRecv = ehttpRecv;
   pPreRequestHandler = NULL;
@@ -284,7 +282,7 @@ void ehttp::add_handler(char *filename, int (*pHandler)(ehttp_ptr obj)) {
     pDefaultHandler = pHandler;
   } else {
     handler_map[filename] = pHandler;
-	}
+  }
 }
 
 void ehttp::set_prerequest_handler(void (*pHandler)(ehttp_ptr obj)) {
@@ -294,9 +292,8 @@ void ehttp::set_prerequest_handler(void (*pHandler)(ehttp_ptr obj)) {
 int ehttp::read_header(int fd, string &header, string &message ) {
   header="";
   unsigned int offset = 0;
-  dprintf("read_header...\n");
+  log(0) << "read_header..." << endl;
   while((offset = header.find("\r\n\r\n")) == string::npos) {
-    //    dprintf("%d %d\n",header.length(), offset);
     input_buffer[0] = 0;
     int r=pRecv((void*)fd, &input_buffer[0], INPUT_BUFFER_SIZE);
     if(r <= 0) {
@@ -312,8 +309,8 @@ int ehttp::read_header(int fd, string &header, string &message ) {
   } else {
     header = header.substr(0, offset);
   }
-  dprintf("Header:-->%s<--\r\n", header.c_str());
-  dprintf("Message:-->%s<--\r\n", message.c_str());
+  log(0) << "Header:-->" << header << "<--" << endl;
+  log(0) << "Message:-->" << message << "<--" << endl;
   return EHTTP_ERR_OK;
 }
 
@@ -322,7 +319,7 @@ int ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
   string value;
   int state = 0;
 
-  dprintf("parse_out_pairs...\n");
+  log(0) << "parse_out_pairs..." << endl;
   // run through the string and pick off the parms as we see them
   for (unsigned int i=0; i < remainder.length();) {
     switch (state) {
@@ -349,7 +346,7 @@ int ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
             unescape(&value);
             parms[id] = value;
             global_parms[id] = value;
-            dprintf("Added %s to %s\r\n",id.c_str(),value.c_str());
+            log(0) << "Added " << id << " to " << value << endl;
             state = 0;
             break;
           default:
@@ -364,7 +361,7 @@ int ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
   if( state == 2 ) {
     unescape(&id);
     unescape(&value);
-    dprintf("Added %s to %s\r\n",id.c_str(),value.c_str());
+    log(0) << "Added " << id << " to " << value << endl;
     parms[id]=value;
     global_parms[id] = value;
   }
@@ -378,19 +375,19 @@ int ehttp::parse_header(string &header) {
   char *request_end=NULL;
   const char *pHeader=header.c_str();
 
-  dprintf("parse_header...\n");
+  log(0) << "parse_header..." << endl;
   filename="";
   contentlength=0;
   requesttype=-1;
 
   // Find end of request URL
-  dprintf("pHeader == [%s]\r\n",pHeader);
+  log(0) << "pHeader == [" << pHeader << "]" << endl;
   request_end=strstr(pHeader," HTTP/1.0\r\n");
   if (!request_end) {
     request_end=strstr(pHeader," HTTP/1.1\r\n");
   }
   if (!request_end) {
-    dprintf("ERROR %d:%s\r\n",__LINE__,__FUNCTION__);
+    log(0) << "ERROR " << __LINE__ << ":" << __FUNCTION__ << endl;
     return EHTTP_ERR_GENERIC;
   }
 
@@ -414,13 +411,13 @@ int ehttp::parse_header(string &header) {
 
   // didn't find a get,post,etc...
   if (requesttype == -1) {
-    dprintf("ERROR %d:%s\r\n",__LINE__,__FUNCTION__);
+    log(0) << "ERROR " << __LINE__ << ":" << __FUNCTION__ << endl;
     return EHTTP_ERR_GENERIC;
   }
 
   // malformed request
   if (request_end <= request) {
-    dprintf("ERROR %d:%s\r\n",__LINE__,__FUNCTION__);
+    log(0) << "ERROR " << __LINE__ << ":" << __FUNCTION__ << endl;
     return EHTTP_ERR_GENERIC;
   }
 
@@ -472,14 +469,14 @@ int ehttp::parse_header(string &header) {
         //add key value pair to map
         to_upper(key);
         request_header[key]=value;
-        dprintf("Header : ...%s... == ...%s...\r\n",key.c_str(),value.c_str());
+        log(0) << "Header : ..." << key << "... == ..." << value << "..." << endl;
         if (*request_end) {
           request_end+=2;
         }
       }
     } else {
       //Somthing went wrong
-      dprintf("ERROR %d:%s\r\n",__LINE__,__FUNCTION__);
+      log(0) << "ERROR " << __LINE__ << ":" << __FUNCTION__ << endl;
       return EHTTP_ERR_GENERIC;
     }
   }
@@ -490,7 +487,7 @@ int ehttp::parse_header(string &header) {
   }
 
   // Find content length
-  contentlength=atoi (request_header["CONTENT-LENGTH"].c_str());
+  contentlength = atoi(request_header["CONTENT-LENGTH"].c_str());
   return EHTTP_ERR_OK;
 }
 
@@ -544,8 +541,8 @@ int ehttp::parse_cookie(string &cookie_string) {
 int ehttp:: parse_message( int fd, string &message ) {
   if( !contentlength ) return EHTTP_ERR_OK;
 
-  dprintf("Parsed content length:%d\r\n",contentlength);
-  dprintf("Actual message length read in:%d\r\n", message.length());
+  log(0) << "Parsed content length:" << contentlength << endl;
+  log(0) << "Actual message length read in:" << message.length() << endl;
 
   // We got more than reported,so now what, truncate?
   // We can normally get +2 more than the reported lenght because of CRLF
@@ -556,12 +553,15 @@ int ehttp:: parse_message( int fd, string &message ) {
     message=message.substr(0,contentlength );
   // Need to read more in
   else if( contentlength > message.length() ) {
-    dprintf("READ MORE MESSAGE...\r\n");
+    log(0) << "READ MORE MESSAGE..." << endl;
     while( contentlength > message.length() ) {
       input_buffer[0]=0;
       int r=pRecv((void*)fd,&input_buffer[0],INPUT_BUFFER_SIZE);
       if( r < 0 )
         return EHTTP_ERR_GENERIC;
+      log(0) << "r=" << r << ", remain=" << contentlength-message.length() << ", buffersize=" << strlen(input_buffer) << endl;
+      input_buffer[r]='\0';
+      log(0) << "-->" << input_buffer << "<--" << endl;
       message+=input_buffer;
     }
     // Just in case we read too much...
@@ -571,7 +571,7 @@ int ehttp:: parse_message( int fd, string &message ) {
     }
 
   // Got here, good, we got the entire reported msg length
-  dprintf("Entire message is <%s>\r\n",message.c_str());
+  log(0) << "Entire message is <" << message << ">" << endl;
   parse_out_pairs(message, post_parms);
 
 
@@ -582,7 +582,7 @@ int ehttp:: parse_message( int fd, string &message ) {
 int ehttp::parse_request(int fd) {
   int (*pHandler)(ehttp_ptr obj)=NULL;
 
-  dprintf("parse_request...\n");
+  log(0) << "parse_request..." << endl;
   /* Things in the object which must be reset for each request */
   filename="";
   sock=fd;
@@ -604,7 +604,7 @@ int ehttp::parse_request(int fd) {
         // We are HTTP1.0 and need the content len to be valid
         // Opera Broswer
         if( contentlength==0 && requesttype==EHTTP_REQUEST_POST ) {
-          dprintf("Content Length is 0 and requesttype is EHTTP_REQUEST_POST\n ");
+          log(0) << "Content Length is 0 and requesttype is EHTTP_REQUEST_POST" << endl;
           return out_commit(EHTTP_LENGTH_REQUIRED);
         }
 
@@ -614,28 +614,26 @@ int ehttp::parse_request(int fd) {
 
         if( pPreRequestHandler ) pPreRequestHandler( shared_from_this() );
         if( !filename.length() ) {
-          dprintf("%d Call default handler no filename \r\n",__LINE__);
+          log(0) << __LINE__ << " Call default handler no filename" << endl;
           return pDefaultHandler( shared_from_this() );
         }
         else {
           //Lookup the handler function fo this filename
+          log(0) << "filename : " << filename << endl;
           pHandler=handler_map[filename];
           //Call the default handler if we didn't get the filename
           if( !pHandler ) {
-            dprintf("%d Call default handler\r\n",__LINE__);
-
+            log(0) << __LINE__ << " Call default handler" << endl;
             return pDefaultHandler( shared_from_this() );
-          }
-          //Found a handler
-          else {
-            dprintf("%d Call user handler\r\n",__LINE__);
+          } else {
+            log(0) << __LINE__ << " Call user handler" << endl;
             return pHandler( shared_from_this() );
           }
         }
       }
     }
   }
-  dprintf("Error parsing request\r\n");
+  log(0) << "Error parsing request" << endl;
   return EHTTP_ERR_GENERIC;
 }
 
@@ -662,14 +660,13 @@ int ehttp::isClose() {
 }
 
 void ehttp::close() {
-  printf("Connection close... (%d)\n", sock);
+  log(0) << "Connection close... (" << sock << ")" << endl;
   ::close(sock);
   fdState = 1;
 }
 
 int ehttp::error(const string &error_message) {
-  dprintf(error_message.c_str());
-  dprintf("\n");
+  log(0) << error_message << endl;
   out_set_file("errormessage.json");
   out_replace_token("fail", error_message);
   out_replace();

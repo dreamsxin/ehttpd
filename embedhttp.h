@@ -48,6 +48,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <crypt.h>
+#include <errno.h>
 #include <list>
 #include <string>
 #include <map>
@@ -60,6 +61,8 @@
 #include <boost/shared_ptr.hpp>
 #include <boost/enable_shared_from_this.hpp>
 
+#include "./log.h"
+
 using namespace std;
 using namespace boost;
 
@@ -70,7 +73,6 @@ enum{
   EHTTP_HDR_NOTHING, EHTTP_HDR_OK,EHTTP_BINARY_FILE,EHTTP_TEXT_FILE,
   EHTTP_REQUEST_GET, EHTTP_REQUEST_POST,EHTTP_LENGTH_REQUIRED
 };
-
 
 ssize_t ehttpRecv(void *ctx, void *buf, size_t len);
 ssize_t ehttpSend(void *ctx, const void *buf, size_t len);
@@ -141,7 +143,7 @@ public:
   ehttp(){
     fdState=0;
     ++ehttp_inst_count;
-    cout << "new ehttp() : " << ehttp_inst_count <<  endl;
+    log(0) << "new ehttp() : " << ehttp_inst_count <<  endl;
     response_header["Content-Type"] = "text/html; charset=utf-8";
   };
 
@@ -151,7 +153,7 @@ public:
    */
   ~ehttp(){
     --ehttp_inst_count;
-    cout << "~ehttp() : " << ehttp_inst_count <<  endl;
+    log(0) << "~ehttp() : " << ehttp_inst_count <<  endl;
     if (!isClose())
       error("Critial Error");
   };

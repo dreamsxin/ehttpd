@@ -17,7 +17,10 @@ clean :
 thread.o : thread.cc *.h
 	$(CXX) $(CXXFLAGS) -c -o thread.o thread.cc -I/usr/local/include/cppconn
 
-embedhttp.o : embedhttp.cc *.h
+log.o : log.cc *.h
+	$(CXX) $(CXXFLAGS) -c -o log.o log.cc
+
+embedhtt.o : embedhppttp.cc *.h
 	$(CXX) $(CXXFLAGS) -c -o embedhttp.o embedhttp.cc
 
 connection.o : connection.cc *.h
@@ -30,6 +33,6 @@ dr_mysql.o : dr_mysql.cc *.h
 mysql_test : dr_mysql.o mysql_test.o
 	$(CXX) $(CXXFLAGS) -o $(BIN)/mysql_test -lmysqlcppconn $^
 
-$(DRSERVER) : thread.o embedhttp.o connection.o dr_mysql.o
+$(DRSERVER) : thread.o embedhttp.o connection.o dr_mysql.o log.o
 	$(CXX) $(CXXFLAGS) -o $(BIN)/$(DRSERVER) -lpthread -lmysqlcppconn $^
 
