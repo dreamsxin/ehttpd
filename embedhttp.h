@@ -38,6 +38,7 @@
 
  ********************************************************************/
 
+#pragma once
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -776,4 +777,4 @@ public:
   int error(const string &error_message);
 };
 
-
+typedef shared_ptr<ehttp> ehttp_ptr;

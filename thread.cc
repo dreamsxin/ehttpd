@@ -16,10 +16,10 @@
 #include <unistd.h>
 #include <deque>
 
-#include "./embedhttp.h"
-#include "./connection.h"
-#include "./dr_mysql.h"
-#include "./log.h"
+#include "embedhttp.h"
+#include "connection.h"
+#include "dr_mysql.h"
+#include "log.h"
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
@@ -31,37 +31,11 @@ using namespace std;
 int cnt=0;
 int listenfd;
 int cookie_index=1;
+
 typedef struct {
   pthread_t tid;
   deque<int> *conn_pool;
 } Thread;
-
-typedef shared_ptr<ehttp> ehttp_ptr;
-
-class connection {
-public:
-  ehttp_ptr fd_polling;
-  ehttp_ptr fd_request;
-
-  string command;
-  string requestpath;
-  string key;
-  int status;
-
-  connection() {};
-
-  connection(ehttp_ptr fd_request,
-             string command,
-             string requestpath,
-             string key,
-             ehttp_ptr fd_polling,
-             int status) : fd_request(fd_request),
-                           command(command),
-                           requestpath(requestpath),
-                           key(key),
-                           fd_polling(fd_polling),
-                           status(status) {};
-};
 
 map <string, connection > connections;
 map <string, map<string, string> > session;
@@ -98,7 +72,7 @@ void removeConnection(string userid) {
     return;
   }
   if (connections[userid].fd_polling.get() != NULL) {
-    connections[userid].fd_polling->close(); 
+    connections[userid].fd_polling->close();
   }
   if (connections[userid].fd_request.get() != NULL) {
     connections[userid].fd_request->close();
@@ -177,17 +151,19 @@ int execute_polling(string userid) {
     log(0) << "Execute_polling : fd_polling = " << connections[userid].fd_polling->getFD() << "   <==>  fd_request = " << connections[userid].fd_request->getFD() << endl;
     ehttp_ptr obj = connections[userid].fd_polling;
     obj->out_set_file("polling.json");
-    obj->out_replace_token("incrkey",connections[userid].key);
-    obj->out_replace_token("command","getfolderlist");
+    obj->out_replace_token("incrkey", connections[userid].key);
+    obj->out_replace_token("command", connections[userid].command);
     string requestpath = connections[userid].requestpath;
     obj->addslash(&requestpath);
 
-    obj->out_replace_token("requestpath",requestpath);
+    obj->out_replace_token("requestpath", requestpath);
     obj->out_replace();
     int ret = obj->out_commit();
     obj->close();
     log(0) << "(" << obj->getFD() << ") Waiting uploading... Status change ( 1-> 2 )" << endl;
     connections[userid].status = 2;
+
+    connections[userid].fd_polling.reset();
     return ret;
   }
 
@@ -238,7 +214,7 @@ int polling_handler( ehttp_ptr obj ) {
 
   //  dprintf("Polling Handler accepted...(%s/%d/%d)\n",userid.c_str(),connections[userid].fd_polling.get() != NULL, connections[userid].fd_request.get() != NULL);
   if (connections.count(userid) > 0 && connections[userid].fd_polling.get() != NULL) {
-    connections[userid].fd_polling->error("Wrong polling");
+    connections[userid].fd_polling->error("Wrong polling. Previous polling is dead.");
     connections[userid].fd_polling.reset();// = ehttp_ptr();
   }
   //  dprintf("connection created(%s)\n", userid.c_str());
@@ -327,7 +303,7 @@ void *main_thread(void *arg) {
     http->add_handler("/login", login_handler);
     http->add_handler(NULL, handleDefault);
 
-    http->parse_request(socket); 
+    http->parse_request(socket);
 
     // if (http->isClose()) {
     //   delete http;
@@ -338,9 +314,6 @@ void *main_thread(void *arg) {
 
   }
 }
-
-
-
 
 int main() {
   struct sockaddr_in srv;
