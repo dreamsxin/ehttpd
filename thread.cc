@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <deque>
 
+#include "epoll.h"
 #include "embedhttp.h"
 #include "connection.h"
 #include "download.h"
@@ -40,7 +41,7 @@ typedef struct {
 
 map <string, connection > connections;
 map <string, map<string, string> > session;
-map <string, download> downloads;
+map <string, download_ptr> downloads;
 
 pthread_mutex_t mutex_connections = PTHREAD_MUTEX_INITIALIZER;
 
@@ -70,7 +71,7 @@ void loginFail (ehttp_ptr obj) {
 
 void safeClose(string userid, ehttp *obj) {
   obj->close();
-  
+
   pthread_mutex_lock(&mutex_connections);
   if (connections[userid].fd_request.get() == obj) {
     // Request
@@ -164,7 +165,7 @@ int login_handler(ehttp_ptr obj) {
   int ret = obj->out_commit();
   obj->close();
   //  log(1) << "Login Handler finished" << endl;
-    
+
   return ret;
 }
 
@@ -185,47 +186,53 @@ int execute_downloading(string incrkey) {
   mimetype["gif"] = "image/gif";
   mimetype["jpg"] = "image/jpeg";
   mimetype["png"] = "image/png";
-  mimetype["mp3"] = "audio/mp3";
+  mimetype["mp3"] = "audio/mpeg";
   mimetype["wav"] = "audio/x-wav";
   mimetype["txt"] = "text/plain";
   mimetype["key"] = "application/octet-stream";
   mimetype["dwg"] = "application/dwg";
-  
+
   log(1) << "Execute_downloading() called." << endl;
-  
-  ehttp_ptr fd_upload = downloads[incrkey].fd_upload;
-  ehttp_ptr fd_download = downloads[incrkey].fd_download;
-  string filename = downloads[incrkey].filename;
+
+  download_ptr dn = downloads[incrkey];
   downloads.erase(incrkey);
-  
-  fd_download->getResponseHeader()["Cache-Control"] = "no-store, no-cache, must-revalidate, post-check=0, pre-check=0";
-  fd_download->getResponseHeader()["Pragma"] = "no-cache";
-  fd_download->getResponseHeader()["Expires"] = "0";
-  fd_download->getResponseHeader()["Content-Disposition"] = "attachment; filename=" + filename;
-  stringstream ss;
-  unsigned int contentlength = fd_upload->getContentLength();
-  ss << contentlength;
-  fd_download->getResponseHeader()["Content-Length"] = ss.str();
-  fd_download->getResponseHeader()["Content-Transfer-Encoding"] = "binary";
-  fd_download->getResponseHeader()["Connection"] = "close";
 
-  size_t found = filename.rfind(".");
-  if (found == string::npos || mimetype.count(filename.substr(found+1)) == 0) {
-    fd_download->getResponseHeader()["Content-Type"] = "application/octet-stream";
+  stringstream strContentLength;
+  strContentLength << dn->fd_upload->getContentLength();
+  dn->fd_download->getResponseHeader()["Cache-Control"] = "no-store, no-cache, must-revalidate, post-check=0, pre-check=0";
+  dn->fd_download->getResponseHeader()["Pragma"] = "no-cache";
+  dn->fd_download->getResponseHeader()["Expires"] = "0";
+  dn->fd_download->getResponseHeader()["Content-Disposition"] = "attachment; filename=" + dn->filename;
+  dn->fd_download->getResponseHeader()["Content-Length"] = strContentLength.str();
+  dn->fd_download->getResponseHeader()["Content-Transfer-Encoding"] = "binary";
+  dn->fd_download->getResponseHeader()["Connection"] = "close";
+
+  size_t found = dn->filename.rfind(".");
+  if (found == string::npos || mimetype.count(dn->filename.substr(found+1)) == 0) {
+    dn->fd_download->getResponseHeader()["Content-Type"] = "application/octet-stream";
   } else {
-    fd_download->getResponseHeader()["Content-Type"] = mimetype[filename.substr(found+1)];
+    dn->fd_download->getResponseHeader()["Content-Type"] = mimetype[dn->filename.substr(found+1)];
+  }
+  dn->fd_download->out_commit();
+
+
+  log(1) << "Download start(" << dn->filename <<")" << endl;
+  int res = dn->fd_download->pSend((void *) (dn->fd_download->getFD()),
+                                   dn->fd_upload->message.c_str(),
+                                   dn->fd_upload->message.length());
+
+  if (res < 0 || res != (int)dn->fd_upload->message.length()) {
+    log(1) << "Error first sending" << endl;
+    dn->close();
+    return EHTTP_ERR_GENERIC;
   }
 
-  fd_download->out_commit();
+  dn->remaining = dn->fd_upload->getContentLength();
+  dn->remaining -= res;
 
-  string message = fd_upload->message;
-  if (contentlength < message.length()) {
-    message = message.substr(0, contentlength);
-  }
-  int sent_length = message.length();
-  log(1) << "Download start(" << filename <<")" << endl;
-  int ret2 = fd_download->pSend((void *) (fd_download->getFD()), message.c_str(), message.length());
+  DrEpoll::get_mutable_instance().add(dn);
 
+  /*
   Byte buffer[INPUT_BUFFER_SIZE];
   while (sent_length < contentlength) {
     int r = fd_upload->pRecv((void*) (fd_upload->getFD()),  buffer, INPUT_BUFFER_SIZE - 1);
@@ -242,7 +249,8 @@ int execute_downloading(string incrkey) {
   log(1) << "Download finish(" << filename <<")" << endl;
 
   fd_download->close();
-  fd_upload->close();
+  fd_upload->close();*/
+  return 1;
 }
 
 int execute_polling(string userid) {
@@ -318,7 +326,7 @@ int polling_handler( ehttp_ptr obj ) {
 
   //  dprintf("Polling Handler accepted...(%s/%d/%d)\n",userid.c_str(),connections[userid].fd_polling.get() != NULL, connections[userid].fd_request.get() != NULL);
   log(1) << "Polling handler accepted..." << endl;
-  
+
   pthread_mutex_lock(&mutex_connections);
   if (connections.count(userid) > 0 && connections[userid].fd_polling.get() != NULL) {
     connections[userid].fd_polling->error("Wrong polling. Previous polling is dead.");
@@ -346,12 +354,12 @@ int upload_handler( ehttp_ptr obj ) {
   }
 
   log(1) << "Set agent info" << endl;
-  
+
   pthread_mutex_lock(&mutex_connections);
   connections[userid].fd_polling = ehttp_ptr(obj);
   connection conn = connections[userid];
   pthread_mutex_unlock(&mutex_connections);
-  
+
   if (conn.status == "polling") {
     obj->error("Wrong uploading _ status=polling");
     return EHTTP_ERR_GENERIC;
@@ -373,22 +381,26 @@ int upload_handler( ehttp_ptr obj ) {
       request->out_commit();
       safeClose(userid, request.get());
 
-      downloads[incrkey].fd_upload = ehttp_ptr(obj);
       string requestpath = conn.requestpath;
       int found = requestpath.rfind("\\");
-      if (found != string::npos) {
+      if (found != (int)string::npos) {
         requestpath = requestpath.substr(found+1);
       }
 
-      downloads[incrkey].filename = requestpath;
+      downloads[incrkey] = download_ptr(new download(
+                             ehttp_ptr(obj),
+                             ehttp_ptr(),
+                             incrkey,
+                             requestpath));
 
       pthread_mutex_lock(&mutex_connections);
       connections.erase(userid);
       pthread_mutex_unlock(&mutex_connections);
       return EHTTP_ERR_OK;
+
     } else {
       request->out_set_file("request.json");
-    
+
       log(1) << "jsondata : " << jsondata << endl;
       request->out_replace_token("jsondata",jsondata);
       request->out_replace();
@@ -430,8 +442,9 @@ int download_handler( ehttp_ptr obj ) {
     obj->close();
     return EHTTP_ERR_GENERIC;
   }
-  downloads[incrkey].fd_download = ehttp_ptr(obj);
+  downloads[incrkey]->fd_download = ehttp_ptr(obj);
   execute_downloading(incrkey);
+  return 1;
 }
 
 void *main_thread(void *arg) {
@@ -477,7 +490,6 @@ void *main_thread(void *arg) {
 int main() {
   struct sockaddr_in srv;
   int clifd;
-  int i;
 
   signal(SIGPIPE, SIG_IGN);
 
@@ -485,10 +497,12 @@ int main() {
   Thread threads[MAX_THREAD];
 
   /* create threads */
-  for(i = 0; i < MAX_THREAD; i++) {
+  for(int i = 0; i < MAX_THREAD; i++) {
     threads[i].conn_pool = &conn_pool;
     pthread_create(&threads[i].tid, NULL, &main_thread, (void *)&threads[i]);
   }
+
+  DrEpoll::get_mutable_instance().init();
 
   if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
     perror("sockfd\n");

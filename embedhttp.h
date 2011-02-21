@@ -79,7 +79,6 @@ ssize_t ehttpRecv(void *ctx, void *buf, size_t len);
 ssize_t ehttpSend(void *ctx, const void *buf, size_t len);
 
 
-
 #define INPUT_BUFFER_SIZE 10240
 
 /*
@@ -126,7 +125,7 @@ public:
   string message;
 
   int getFD();
-  int getContentLength();  
+  int getContentLength();
   int unescape(string *str);
   int addslash(string *str);
   int parse_cookie(string &cookie_string);

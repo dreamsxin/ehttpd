@@ -300,7 +300,7 @@ int ehttp::read_header(string *header) {
 
   while((offset = header->find("\r\n\r\n")) == string::npos) {
     int r = pRecv((void*)sock, buffer, INPUT_BUFFER_SIZE - 1);
-    if(r <= 0) {
+    if(r < 0) {
       return EHTTP_ERR_GENERIC;
     }
 
@@ -423,7 +423,7 @@ int ehttp::parse_header(string &header) {
     }
   }
 
-  
+
   // didn't find a get,post,etc...
   if (requesttype == -1) {
     log(1) << "ERROR " << __LINE__ << ":" << __FUNCTION__ << endl;
@@ -478,7 +478,7 @@ int ehttp::parse_header(string &header) {
       }
       // read in the value
       if (valueend) {
-	while (request_end < valueend) {
+        while (request_end < valueend) {
           value+=*request_end++;
         }
         //add key value pair to map
