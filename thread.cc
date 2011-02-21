@@ -18,6 +18,7 @@
 
 #include "embedhttp.h"
 #include "connection.h"
+#include "download.h"
 #include "dr_mysql.h"
 #include "log.h"
 #include <boost/uuid/random_generator.hpp>
@@ -39,6 +40,9 @@ typedef struct {
 
 map <string, connection > connections;
 map <string, map<string, string> > session;
+map <string, download> downloads;
+
+pthread_mutex_t mutex_connections = PTHREAD_MUTEX_INITIALIZER;
 
 DrMysql db;
 
@@ -66,6 +70,8 @@ void loginFail (ehttp_ptr obj) {
 
 void safeClose(string userid, ehttp *obj) {
   obj->close();
+  
+  pthread_mutex_lock(&mutex_connections);
   if (connections[userid].fd_request.get() == obj) {
     // Request
     connections[userid].fd_request.reset();
@@ -73,15 +79,17 @@ void safeClose(string userid, ehttp *obj) {
     // Polling
     connections[userid].fd_polling.reset();
   }
+  pthread_mutex_unlock(&mutex_connections);
 }
 
 pthread_mutex_t new_connection_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void removeConnection(string userid) {
-  log(0) << "remove Connection" << endl;
+  log(1) << "remove Connection" << endl;
   if (connections.count(userid) == 0) {
     return;
   }
+  pthread_mutex_lock(&mutex_connections);
   if (connections[userid].fd_polling.get() != NULL) {
     connections[userid].fd_polling->close();
   }
@@ -89,13 +97,15 @@ void removeConnection(string userid) {
     connections[userid].fd_request->close();
   }
   connections.erase(userid);
+  pthread_mutex_unlock(&mutex_connections);
 }
 
 void dieConnection(string userid, const string &error_message) {
-  log(0) << "Die Connection" << endl;
+  log(1) << "Die Connection" << endl;
   if (connections.count(userid) == 0) {
     return;
   }
+  pthread_mutex_lock(&mutex_connections);
   if (connections[userid].fd_polling.get() != NULL) {
     connections[userid].fd_polling->error(error_message);
   }
@@ -103,6 +113,7 @@ void dieConnection(string userid, const string &error_message) {
     connections[userid].fd_request->error(error_message);
   }
   connections.erase(userid);
+  pthread_mutex_unlock(&mutex_connections);
 }
 
 int handleDefault(ehttp_ptr obj) {
@@ -115,9 +126,9 @@ int handleDefault(ehttp_ptr obj) {
 }
 
 int login_handler(ehttp_ptr obj) {
-  log(0) << "Login Handler!" << endl;
+  log(1) << "Login Handler!" << endl;
   if ((obj->getPostParams()).count("email") > 0) {
-    log(0) << "POST" << endl;
+    log(1) << "POST" << endl;
     string email = obj->getPostParams()["email"];
     string padpasskey = obj->getPostParams()["padpasskey"];
     string installkey = obj->getPostParams()["installkey"];
@@ -130,7 +141,7 @@ int login_handler(ehttp_ptr obj) {
       session[sessionid]["user_id"] = user_id;
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
-      log(0) << user_id << " login success" << endl;
+      log(1) << user_id << " login success" << endl;
 
     } else if (installkey.length() > 0 && db.login(email, installkey, &user_id, &macaddress)) {
       boost::uuids::basic_random_generator<boost::mt19937> gen;
@@ -140,14 +151,14 @@ int login_handler(ehttp_ptr obj) {
       session[sessionid]["user_id"] = user_id;
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
-      log(0) << user_id << " login success" << endl;
+      log(1) << user_id << " login success" << endl;
     } else {
       string msg = user_id + " login fail";
       obj->error(msg);
     }
-    log(0) << "mac : " << macaddress << endl;
+    log(1) << "mac : " << macaddress << endl;
   } else {
-  log(0) << "GET" << endl;
+  log(1) << "GET" << endl;
     obj->out_set_file("login_page.html");
   }
   obj->out_replace();
@@ -156,22 +167,104 @@ int login_handler(ehttp_ptr obj) {
   return ret;
 }
 
+int execute_downloading(string incrkey) {
+  //TODO: execute downloading using epoll
+
+  map<string, string> mimetype;
+  mimetype["hwp"] = "application/x-hwp";
+  mimetype["doc"] = "application/msword";
+  mimetype["docx"] = "application/x-zip-compressed";
+  mimetype["xls"] = "application/vnd.ms-excel";
+  mimetype["xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  mimetype["ppt"] = "application/vnd.ms-powerpoint";
+  mimetype["pptx"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  mimetype["pdf"] = "application/pdf";
+  mimetype["rtf"] = "application/rtf";
+  mimetype["gul"] = "application/gul";
+  mimetype["gif"] = "image/gif";
+  mimetype["jpg"] = "image/jpeg";
+  mimetype["png"] = "image/png";
+  mimetype["mp3"] = "audio/mp3";
+  mimetype["wav"] = "audio/x-wav";
+  mimetype["txt"] = "text/plain";
+  mimetype["key"] = "application/octet-stream";
+  mimetype["dwg"] = "application/dwg";
+  
+  log(1) << "Execute_downloading() called." << endl;
+  
+  ehttp_ptr fd_upload = downloads[incrkey].fd_upload;
+  ehttp_ptr fd_download = downloads[incrkey].fd_download;
+  string filename = downloads[incrkey].filename;
+  downloads.erase(incrkey);
+  
+  fd_download->getResponseHeader()["Cache-Control"] = "no-store, no-cache, must-revalidate, post-check=0, pre-check=0";
+  fd_download->getResponseHeader()["Pragma"] = "no-cache";
+  fd_download->getResponseHeader()["Expires"] = "0";
+  fd_download->getResponseHeader()["Content-Disposition"] = "attachment; filename=" + filename;
+  stringstream ss;
+  unsigned int contentlength = fd_upload->getContentLength();
+  ss << contentlength;
+  fd_download->getResponseHeader()["Content-Length"] = ss.str();
+  fd_download->getResponseHeader()["Content-Transfer-Encoding"] = "binary";
+  fd_download->getResponseHeader()["Connection"] = "close";
+
+  int found = filename.rfind(".");
+  if (found == string::npos || mimetype.count(filename.substr(found+1)) == 0) {
+    fd_download->getResponseHeader()["Content-Type"] = "application/octet-stream";
+  } else {
+    fd_download->getResponseHeader()["Content-Type"] = mimetype[filename.substr(found+1)];
+  }
+
+  fd_download->out_commit();
+
+  string message = fd_upload->message;
+  if (contentlength < message.length()) {
+    message = message.substr(0, contentlength);
+  }
+  int sent_length = message.length();
+  log(1) << "Download start(" << filename <<")" << endl;
+  int ret2 = fd_download->pSend((void *) (fd_download->getFD()), message.c_str(), message.length());
+
+  Byte buffer[INPUT_BUFFER_SIZE];
+  while (sent_length < contentlength) {
+    int r = fd_upload->pRecv((void*) (fd_upload->getFD()),  buffer, INPUT_BUFFER_SIZE - 1);
+    if(r < 0) {
+      fd_download->close();
+      fd_upload->close();
+      return EHTTP_ERR_GENERIC;
+    } else if (r == 0) {
+      continue;
+    }
+    int ret = fd_download->pSend((void *) (fd_download->getFD()), buffer, r);
+    sent_length += r;
+  }
+  log(1) << "Download finish(" << filename <<")" << endl;
+
+  fd_download->close();
+  fd_upload->close();
+}
+
 int execute_polling(string userid) {
-  log(0) << "Execute_polling(" << userid << "/" << (connections[userid].fd_polling.get() != NULL) << "/" << (connections[userid].fd_request.get() != NULL) << ")" << endl;
-  if (connections[userid].fd_polling.get() != NULL && connections[userid].fd_request.get() != NULL) {
-    log(0) << "Execute_polling : fd_polling = " << connections[userid].fd_polling->getFD() << "   <==>  fd_request = " << connections[userid].fd_request->getFD() << endl;
-    ehttp_ptr obj = connections[userid].fd_polling;
+  pthread_mutex_lock(&mutex_connections);
+  connection conn = connections[userid];
+  pthread_mutex_unlock(&mutex_connections);
+  log(1) << "Execute_polling(" << userid << "/" << (conn.fd_polling.get() != NULL) << "/" << (conn.fd_request.get() != NULL) << ")" << endl;
+  if (conn.fd_polling.get() != NULL && conn.fd_request.get() != NULL) {
+    log(1) << "Execute_polling : fd_polling = " << conn.fd_polling->getFD() << "   <==>  fd_request = " << conn.fd_request->getFD() << endl;
+    ehttp_ptr obj = conn.fd_polling;
     obj->out_set_file("polling.json");
-    obj->out_replace_token("incrkey", connections[userid].key);
-    obj->out_replace_token("command", connections[userid].command);
-    string requestpath = connections[userid].requestpath;
+    obj->out_replace_token("incrkey", conn.key);
+    obj->out_replace_token("command", conn.command);
+    string requestpath = conn.requestpath;
     obj->addslash(&requestpath);
 
     obj->out_replace_token("requestpath", requestpath);
     obj->out_replace();
     int ret = obj->out_commit();
-    log(0) << "(" << obj->getFD() << ") Waiting uploading... Status change ( polling -> uploading )" << endl;
+    log(1) << "(" << obj->getFD() << ") Waiting uploading... Status change ( polling -> uploading )" << endl;
+    pthread_mutex_lock(&mutex_connections);
     connections[userid].status = "uploading";
+    pthread_mutex_unlock(&mutex_connections);
     safeClose(userid, obj.get());
     return ret;
   }
@@ -195,21 +288,25 @@ int request_handler( ehttp_ptr obj ) {
     safeClose(userid, obj.get());
     return EHTTP_ERR_OK;
   }
-
-  log(0) << "Request Handler accepted...(" << userid << "/" << (connections[userid].fd_polling.get() != NULL) << "/" << (connections[userid].fd_request.get() != NULL) << ")" << endl;
-  if (connections.count(userid) > 0 && connections[userid].fd_request.get() != NULL) {
+  pthread_mutex_lock(&mutex_connections);
+  connection conn = connections[userid];
+  pthread_mutex_unlock(&mutex_connections);
+  log(1) << "Request Handler accepted...(" << userid << "/" << (conn.fd_polling.get() != NULL) << "/" << (conn.fd_request.get() != NULL) << ")" << endl;
+  if (connections.count(userid) > 0 && conn.fd_request.get() != NULL) {
     removeConnection("Clean connection for new request");
   }
-  // log(0) << "connection created(" << userid << ")" << endl;
+  // log(1) << "connection created(" << userid << ")" << endl;
 
+  pthread_mutex_lock(&mutex_connections);
   connections[userid].fd_request = ehttp_ptr(obj);
   connections[userid].command = obj->getUrlParams()["command"];
   connections[userid].requestpath = obj->getUrlParams()["requestpath"];
   boost::uuids::basic_random_generator<boost::mt19937> gen;
   boost::uuids::uuid u = gen();
-  connections[userid].key = to_string(u);
+  connections[userid].key = to_string(u); //TODO(bigeye): make more shorter uuid
   connections[userid].status = "polling";
-  log(0) << "Set request info (fd_request=" << (connections[userid].fd_request)->getFD() << ", command=" << connections[userid].command << ", requestpath=" << connections[userid].requestpath <<", key=" << connections[userid].key << ",status=" << connections[userid].status << ")" << endl;
+  log(1) << "Set request info (fd_request=" << (connections[userid].fd_request)->getFD() << ", command=" << connections[userid].command << ", requestpath=" << connections[userid].requestpath <<", key=" << connections[userid].key << ",status=" << connections[userid].status << ")" << endl;
+  pthread_mutex_unlock(&mutex_connections);
   return execute_polling(userid);
 }
 
@@ -222,6 +319,9 @@ int polling_handler( ehttp_ptr obj ) {
   string userid = session[session_id]["user_id"];
 
   //  dprintf("Polling Handler accepted...(%s/%d/%d)\n",userid.c_str(),connections[userid].fd_polling.get() != NULL, connections[userid].fd_request.get() != NULL);
+  log(1) << "Polling handler accepted..." << endl;
+  
+  pthread_mutex_lock(&mutex_connections);
   if (connections.count(userid) > 0 && connections[userid].fd_polling.get() != NULL) {
     connections[userid].fd_polling->error("Wrong polling. Previous polling is dead.");
     connections[userid].fd_polling.reset();// = ehttp_ptr();
@@ -229,6 +329,7 @@ int polling_handler( ehttp_ptr obj ) {
   //  dprintf("connection created(%s)\n", userid.c_str());
   connections[userid].fd_polling = ehttp_ptr(obj);
   connections[userid].status = "polling";
+  pthread_mutex_unlock(&mutex_connections);
   return execute_polling(userid);
 }
 
@@ -240,49 +341,99 @@ int upload_handler( ehttp_ptr obj ) {
   string session_id = obj->ptheCookie["SESSIONID"];
   string userid = session[session_id]["user_id"];
 
-  log(0) << "Upload Handler accepted..." << endl;
+  log(1) << "Upload Handler accepted..." << endl;
   if (connections.count(userid) == 0) {
     obj->error("Wrong uploading _ connections doesn't exist");
     return EHTTP_ERR_GENERIC;
   }
 
-  log(0) << "Set agent info" << endl;
+  log(1) << "Set agent info" << endl;
+  
+  pthread_mutex_lock(&mutex_connections);
   connections[userid].fd_polling = ehttp_ptr(obj);
-  if (connections[userid].status == "polling") {
+  connection conn = connections[userid];
+  pthread_mutex_unlock(&mutex_connections);
+  
+  if (conn.status == "polling") {
     obj->error("Wrong uploading _ status=polling");
     return EHTTP_ERR_GENERIC;
   }
-
   string jsondata = obj->getPostParams()["jsondata"];
-  if (connections[userid].key == obj->getPostParams()["incrkey"]) {
-    ehttp_ptr request = connections[userid].fd_request;
+  string incrkey = obj->getPostParams()["incrkey"];
+  string command = obj->getPostParams()["command"];
+  if (conn.key == incrkey) {
+    ehttp_ptr request = conn.fd_request;
     if (request->isClose()) {
       dieConnection(userid, "Wrong uploading _ request is closed");
       return EHTTP_ERR_GENERIC;
     }
-    request->out_set_file("request.json");
 
-    log(0) << "jsondata : " << jsondata << endl;
-    request->out_replace_token("jsondata",jsondata);
-    request->out_replace();
-    request->out_commit();
-    safeClose(userid, request.get());
+    if (command == "getfile") {
+      request->out_set_file("request.json");
+      request->out_replace_token("jsondata","{\"filedownurl\":\"http://dlp.jiran.com:8080/download?incrkey=" + incrkey + "\"}");
+      request->out_replace();
+      request->out_commit();
+      safeClose(userid, request.get());
 
-    obj->out_set_file("polling.json");
-    obj->out_replace_token("incrkey","");
-    obj->out_replace_token("command","");
-    obj->out_replace_token("requestpath","");
-    obj->out_replace();
-    int ret = obj->out_commit();
-    safeClose(userid, obj.get());
+      downloads[incrkey].fd_upload = ehttp_ptr(obj);
+      string requestpath = conn.requestpath;
+      int found = requestpath.rfind("\\");
+      if (found != string::npos) {
+        requestpath = requestpath.substr(found+1);
+      }
 
-    log(0) << "Connection close..." << endl;
-    connections.erase(userid);
-    return ret;
+      downloads[incrkey].filename = requestpath;
+
+      pthread_mutex_lock(&mutex_connections);
+      connections.erase(userid);
+      pthread_mutex_unlock(&mutex_connections);
+      return EHTTP_ERR_OK;
+    } else {
+      request->out_set_file("request.json");
+    
+      log(1) << "jsondata : " << jsondata << endl;
+      request->out_replace_token("jsondata",jsondata);
+      request->out_replace();
+      request->out_commit();
+      safeClose(userid, request.get());
+
+      obj->out_set_file("polling.json");
+      obj->out_replace_token("incrkey","");
+      obj->out_replace_token("command","");
+      obj->out_replace_token("requestpath","");
+      obj->out_replace();
+      int ret = obj->out_commit();
+      safeClose(userid, obj.get());
+
+      log(1) << "Connection close..." << endl;
+
+      pthread_mutex_lock(&mutex_connections);
+      connections.erase(userid);
+      pthread_mutex_unlock(&mutex_connections);
+      return ret;
+    }
   } else {
     obj->error("FAIL : Key doesn't match!");
     return EHTTP_ERR_GENERIC;
   }
+}
+
+int download_handler( ehttp_ptr obj ) {
+  if (!(obj->ptheCookie.count("SESSIONID") > 0 && session.count(obj->ptheCookie["SESSIONID"]) > 0)) {
+    loginFail(obj);
+    return EHTTP_ERR_GENERIC;
+  }
+  string session_id = obj->ptheCookie["SESSIONID"];
+  string userid = session[session_id]["user_id"];
+
+  log(1) << "Download Handler accepted..." << endl;
+  string incrkey = obj->getPostParams()["incrkey"];
+  if (downloads.count(incrkey) == 0) {
+    obj->close();
+    return EHTTP_ERR_GENERIC;
+  }
+  downloads[incrkey].fd_download = ehttp_ptr(obj);
+  execute_downloading(incrkey);
 }
 
 void *main_thread(void *arg) {
@@ -310,6 +461,7 @@ void *main_thread(void *arg) {
     http->add_handler("/upload", upload_handler);
     http->add_handler("/request", request_handler);
     http->add_handler("/login", login_handler);
+    http->add_handler("/download", download_handler);
     http->add_handler(NULL, handleDefault);
 
     http->parse_request(socket);
@@ -362,7 +514,7 @@ int main() {
   struct sockaddr_in client_addr;
   socklen_t sin_size = sizeof(struct sockaddr_in);
 
-  log(0) << "Listen..." << endl;
+  log(1) << "Listen..." << endl;
   for( ; ; ) {
     if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
       perror("accept\n");
@@ -370,7 +522,7 @@ int main() {
     }
     //    nonblock(clifd);
     pthread_mutex_lock(&new_connection_mutex);
-    log(0) << "Accepted... " << clifd << "  / Queue size : " << clifd << " / count : " << conn_pool.size() << endl;
+    log(1) << "Accepted... " << clifd << "  / Queue size : " << clifd << " / count : " << conn_pool.size() << endl;
     conn_pool.push_back(clifd);
     pthread_mutex_unlock(&new_connection_mutex);
   }

@@ -72,7 +72,7 @@ enum{
   EHTTP_ERR_GENERIC=-1,EHTTP_ERR_OK,EHTTP_ERR_CONNECTLOST,EHTTP_ERR_APP,
   EHTTP_ERR_REGEX,
   EHTTP_HDR_NOTHING, EHTTP_HDR_OK,EHTTP_BINARY_FILE,EHTTP_TEXT_FILE,
-  EHTTP_REQUEST_GET, EHTTP_REQUEST_POST,EHTTP_LENGTH_REQUIRED
+  EHTTP_REQUEST_GET, EHTTP_REQUEST_POST, EHTTP_REQUEST_PUT, EHTTP_LENGTH_REQUIRED
 };
 
 ssize_t ehttpRecv(void *ctx, void *buf, size_t len);
@@ -90,13 +90,8 @@ ssize_t ehttpSend(void *ctx, const void *buf, size_t len);
 static int ehttp_inst_count = 0;
 
 typedef char Byte;
-typedef std::vector<Byte> ByteVector;
-typedef std::deque<ByteVector> DataQueue;
 
 class ehttp: public boost::enable_shared_from_this<ehttp> {
-
-  DataQueue dataQueue;
-
   int fdState;
   int sock;
   int filetype;
@@ -107,7 +102,6 @@ class ehttp: public boost::enable_shared_from_this<ehttp> {
   string url;                //the url
   string outfilename;            //template filename
   string outbuffer;            //response output buffer
-
 
   map <string, string> url_parms;
   map <string, string> post_parms;
@@ -121,9 +115,6 @@ class ehttp: public boost::enable_shared_from_this<ehttp> {
   int (*pDefaultHandler)(ehttp_ptr obj);
   void (*pPreRequestHandler)(ehttp_ptr obj);
 
-  ssize_t (*pRecv)(void *ctx, void *buf, size_t len);
-  ssize_t (*pSend)(void *ctx, const void *buf, size_t len);
-
   int read_header(string *header);
   int parse_header(string &header);
   int parse_out_pairs(string &remainder, map <string, string> &parms );
@@ -132,11 +123,16 @@ class ehttp: public boost::enable_shared_from_this<ehttp> {
 
 public:
   map <string, string> ptheCookie;
+  string message;
 
   int getFD();
+  int getContentLength();  
   int unescape(string *str);
   int addslash(string *str);
   int parse_cookie(string &cookie_string);
+
+  ssize_t (*pRecv)(void *ctx, void *buf, size_t len);
+  ssize_t (*pSend)(void *ctx, const void *buf, size_t len);
 
   /****************************************************************
    Constructor: ehttp

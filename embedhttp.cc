@@ -255,6 +255,7 @@ int ehttp::out_commit(int header) {
     outbuffer=string("HTTP/1.0 411 Length Required\r\n\r\n");
   }
 
+  log(0) << "Response : [[[" + outbuffer + "]]]" << endl;
   int remain = outbuffer.length();
   int total = remain;
   while(remain) {
@@ -302,35 +303,17 @@ int ehttp::read_header(string *header) {
       return EHTTP_ERR_GENERIC;
     }
 
-    dataQueue.push_back(ByteVector(buffer, buffer + r));
-
     buffer[r] = 0;
-    header->append(buffer);
+    header->append(string(buffer, buffer + r));
   }
 
   offset += 4;  // \r\n\r\n
+  message = header->substr(offset);
   *header = header->substr(0, offset);
-
-  for (int size = 0; !dataQueue.empty(); ) {
-    ByteVector vec = dataQueue.front();
-    dataQueue.pop_front();
-
-    if (size + vec.size() > offset) {
-      vec.erase(vec.begin(), vec.begin() + offset - size);
-      dataQueue.push_front(vec);
-      break;
-    }
-    size += vec.size();
-  }
 
   log(0) << "Header:-->" << *header << "<--" << endl;
 
-  if (!dataQueue.empty()) {
-    ByteVector vec = dataQueue.front();
-    string s(vec.begin(), vec.end());
-    log(0) << "Remain Data:-->" << s << "<--" << endl;
-
-  }
+  log(0) << "Remain Data:-->" << message << "<--" << endl;
 
   return EHTTP_ERR_OK;
 }
@@ -430,6 +413,16 @@ int ehttp::parse_header(string &header) {
     }
   }
 
+  // Is this a PUT request
+  if (requesttype == -1 ) {
+    request=strstr(pHeader,"PUT ");
+    if (request) {
+      request+=4;
+      requesttype=EHTTP_REQUEST_PUT;
+    }
+  }
+
+  
   // didn't find a get,post,etc...
   if (requesttype == -1) {
     log(0) << "ERROR " << __LINE__ << ":" << __FUNCTION__ << endl;
@@ -516,6 +509,10 @@ int ehttp::getFD() {
   return sock;
 }
 
+int ehttp::getContentLength() {
+  return contentlength;
+}
+
 int ehttp::unescape(string *str) {
   size_t found = -1;
   while((found = str->find('%', found+1)) != string::npos) {
@@ -563,14 +560,6 @@ int ehttp:: parse_message() {
   if( !contentlength ) return EHTTP_ERR_OK;
 
   log(0) << "Parsed content length:" << contentlength << endl;
-
-  string message;
-  while(!dataQueue.empty()) {
-    ByteVector vec = dataQueue.front();
-    message.append(string(vec.begin(), vec.end()));
-    dataQueue.pop_front();
-  }
-
   log(0) << "Actual message length read in:" << message.length() << endl;
 
   // We got more than reported,so now what, truncate?
@@ -584,7 +573,7 @@ int ehttp:: parse_message() {
 
     Byte buffer[INPUT_BUFFER_SIZE];
     while(contentlength > message.length()) {
-      int r = pRecv((void*)sock, buffer, INPUT_BUFFER_SIZE);
+      int r = pRecv((void*)sock, buffer, INPUT_BUFFER_SIZE - 1);
       if(r < 0) {
         return EHTTP_ERR_GENERIC;
       }
@@ -638,7 +627,7 @@ int ehttp::parse_request(int fd) {
     return EHTTP_ERR_GENERIC;
   }
 
-  if(parse_message() != EHTTP_ERR_OK) {
+  if(requesttype != EHTTP_REQUEST_PUT && parse_message() != EHTTP_ERR_OK) {
     log(0) << "Error parsing request" << endl;
     return EHTTP_ERR_GENERIC;
   }
