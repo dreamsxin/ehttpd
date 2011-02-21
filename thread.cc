@@ -85,11 +85,11 @@ void safeClose(string userid, ehttp *obj) {
 pthread_mutex_t new_connection_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void removeConnection(string userid) {
+  // Must unlock mutex when function is started.
   log(1) << "remove Connection" << endl;
   if (connections.count(userid) == 0) {
     return;
   }
-  pthread_mutex_lock(&mutex_connections);
   if (connections[userid].fd_polling.get() != NULL) {
     connections[userid].fd_polling->close();
   }
@@ -97,7 +97,6 @@ void removeConnection(string userid) {
     connections[userid].fd_request->close();
   }
   connections.erase(userid);
-  pthread_mutex_unlock(&mutex_connections);
 }
 
 void dieConnection(string userid, const string &error_message) {
@@ -164,6 +163,8 @@ int login_handler(ehttp_ptr obj) {
   obj->out_replace();
   int ret = obj->out_commit();
   obj->close();
+  //  log(1) << "Login Handler finished" << endl;
+    
   return ret;
 }
 
@@ -208,7 +209,7 @@ int execute_downloading(string incrkey) {
   fd_download->getResponseHeader()["Content-Transfer-Encoding"] = "binary";
   fd_download->getResponseHeader()["Connection"] = "close";
 
-  int found = filename.rfind(".");
+  size_t found = filename.rfind(".");
   if (found == string::npos || mimetype.count(filename.substr(found+1)) == 0) {
     fd_download->getResponseHeader()["Content-Type"] = "application/octet-stream";
   } else {
@@ -247,29 +248,30 @@ int execute_downloading(string incrkey) {
 int execute_polling(string userid) {
   pthread_mutex_lock(&mutex_connections);
   connection conn = connections[userid];
-  pthread_mutex_unlock(&mutex_connections);
   log(1) << "Execute_polling(" << userid << "/" << (conn.fd_polling.get() != NULL) << "/" << (conn.fd_request.get() != NULL) << ")" << endl;
-  if (conn.fd_polling.get() != NULL && conn.fd_request.get() != NULL) {
-    log(1) << "Execute_polling : fd_polling = " << conn.fd_polling->getFD() << "   <==>  fd_request = " << conn.fd_request->getFD() << endl;
-    ehttp_ptr obj = conn.fd_polling;
-    obj->out_set_file("polling.json");
-    obj->out_replace_token("incrkey", conn.key);
-    obj->out_replace_token("command", conn.command);
-    string requestpath = conn.requestpath;
-    obj->addslash(&requestpath);
-
-    obj->out_replace_token("requestpath", requestpath);
-    obj->out_replace();
-    int ret = obj->out_commit();
-    log(1) << "(" << obj->getFD() << ") Waiting uploading... Status change ( polling -> uploading )" << endl;
-    pthread_mutex_lock(&mutex_connections);
-    connections[userid].status = "uploading";
+  if (conn.fd_polling.get() == NULL || conn.fd_request.get() == NULL) {
     pthread_mutex_unlock(&mutex_connections);
-    safeClose(userid, obj.get());
-    return ret;
+    return EHTTP_ERR_GENERIC;
   }
+  pthread_mutex_unlock(&mutex_connections);
 
- return 0;
+  log(1) << "Execute_polling : fd_polling = " << conn.fd_polling->getFD() << "   <==>  fd_request = " << conn.fd_request->getFD() << endl;
+  ehttp_ptr obj = conn.fd_polling;
+  obj->out_set_file("polling.json");
+  obj->out_replace_token("incrkey", conn.key);
+  obj->out_replace_token("command", conn.command);
+  string requestpath = conn.requestpath;
+  obj->addslash(&requestpath);
+
+  obj->out_replace_token("requestpath", requestpath);
+  obj->out_replace();
+  int ret = obj->out_commit();
+  log(1) << "(" << obj->getFD() << ") Waiting uploading... Status change ( polling -> uploading )" << endl;
+  pthread_mutex_lock(&mutex_connections);
+  connections[userid].status = "uploading";
+  pthread_mutex_unlock(&mutex_connections);
+  safeClose(userid, obj.get());
+  return ret;
 }
 
 int request_handler( ehttp_ptr obj ) {
@@ -290,14 +292,10 @@ int request_handler( ehttp_ptr obj ) {
   }
   pthread_mutex_lock(&mutex_connections);
   connection conn = connections[userid];
-  pthread_mutex_unlock(&mutex_connections);
   log(1) << "Request Handler accepted...(" << userid << "/" << (conn.fd_polling.get() != NULL) << "/" << (conn.fd_request.get() != NULL) << ")" << endl;
   if (connections.count(userid) > 0 && conn.fd_request.get() != NULL) {
-    removeConnection("Clean connection for new request");
+    removeConnection(userid);
   }
-  // log(1) << "connection created(" << userid << ")" << endl;
-
-  pthread_mutex_lock(&mutex_connections);
   connections[userid].fd_request = ehttp_ptr(obj);
   connections[userid].command = obj->getUrlParams()["command"];
   connections[userid].requestpath = obj->getUrlParams()["requestpath"];
