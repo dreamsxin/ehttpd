@@ -487,7 +487,25 @@ void *main_thread(void *arg) {
   }
 }
 
+void handle_sigs(int signo) {
+  log(0) << "Signal(" << signo << ") is ignored" << endl;
+}
+
 int main() {
+  if (fork() != 0) {
+    exit(0);
+  }
+  signal(SIGHUP, handle_sigs);
+  signal(SIGINT, handle_sigs);
+  signal(SIGTERM, handle_sigs);
+  signal(SIGQUIT, handle_sigs);
+
+  fstream pidfile;
+  //TODO(donghyun): option
+  pidfile.open("/var/drserver/drserver.pid", fstream::out);
+  pidfile << getpid() << endl;
+  pidfile.close();
+
   struct sockaddr_in srv;
   int clifd;
 
