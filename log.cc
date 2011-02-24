@@ -11,7 +11,7 @@ ostream & log(int debuglevel) {
     switch(debuglevel) {
     case 0: cout << "[D] " << timestamp << " "; break;
     case 1: cout << "[I] " << timestamp << " "; break;
-    case 2: cout << "[W] " << timestamp << " "; break;
+    case 2: cout << "[E] " << timestamp << " "; break;
     }
     return cout;
   } else {

@@ -126,9 +126,9 @@ int handleDefault(ehttp_ptr obj) {
 }
 
 int login_handler(ehttp_ptr obj) {
-  log(1) << "Login Handler!" << endl;
+  log(1) << "Login Handler called" << endl;
   if ((obj->getPostParams()).count("email") > 0) {
-    log(1) << "POST" << endl;
+    log(0) << "POST" << endl;
     string email = obj->getPostParams()["email"];
     string padpasskey = obj->getPostParams()["padpasskey"];
     string installkey = obj->getPostParams()["installkey"];
@@ -141,7 +141,7 @@ int login_handler(ehttp_ptr obj) {
       session[sessionid]["user_id"] = user_id;
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
-      log(1) << user_id << " login success" << endl;
+      log(1) << email << " login success" << endl;
 
     } else if (installkey.length() > 0 && db.login(email, installkey, &user_id, &macaddress)) {
       boost::uuids::basic_random_generator<boost::mt19937> gen;
@@ -151,14 +151,14 @@ int login_handler(ehttp_ptr obj) {
       session[sessionid]["user_id"] = user_id;
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
-      log(1) << user_id << " login success" << endl;
+      log(1) << email << " login success" << endl;
     } else {
       string msg = user_id + " login fail";
       obj->error(msg);
     }
-    log(1) << "mac : " << macaddress << endl;
+    //    log(0) << "mac : " << macaddress << endl;
   } else {
-  log(1) << "GET" << endl;
+    log(0) << "GET" << endl;
     obj->out_set_file("login_page.html");
   }
   obj->out_replace();
@@ -171,7 +171,7 @@ int login_handler(ehttp_ptr obj) {
 
 int execute_downloading(string incrkey) {
   //TODO: execute downloading using epoll
-
+  //TODO(bigeye): move to ...
   map<string, string> mimetype;
   mimetype["hwp"] = "application/x-hwp";
   mimetype["doc"] = "application/msword";
@@ -191,8 +191,6 @@ int execute_downloading(string incrkey) {
   mimetype["txt"] = "text/plain";
   mimetype["key"] = "application/octet-stream";
   mimetype["dwg"] = "application/dwg";
-
-  log(1) << "Execute_downloading() called." << endl;
 
   download_ptr dn = downloads[incrkey];
   downloads.erase(incrkey);
@@ -256,14 +254,16 @@ int execute_downloading(string incrkey) {
 int execute_polling(string userid) {
   pthread_mutex_lock(&mutex_connections);
   connection conn = connections[userid];
-  log(1) << "Execute_polling(" << userid << "/" << (conn.fd_polling.get() != NULL) << "/" << (conn.fd_request.get() != NULL) << ")" << endl;
+  //  log(0) << "Execute_polling(" << userid << "/" << (conn.fd_polling.get() != NULL) << "/" << (conn.fd_request.get() != NULL) << ")" << endl;
   if (conn.fd_polling.get() == NULL || conn.fd_request.get() == NULL) {
     pthread_mutex_unlock(&mutex_connections);
+    log(1) << "Waiting other side ..." << endl;
     return EHTTP_ERR_GENERIC;
   }
   pthread_mutex_unlock(&mutex_connections);
 
-  log(1) << "Execute_polling : fd_polling = " << conn.fd_polling->getFD() << "   <==>  fd_request = " << conn.fd_request->getFD() << endl;
+  log(1) << "Execute_polling" << endl;
+  log(0) << "fds connected : fd_polling = " << conn.fd_polling->getFD() << "   <==>  fd_request = " << conn.fd_request->getFD() << endl;
   ehttp_ptr obj = conn.fd_polling;
   obj->out_set_file("polling.json");
   obj->out_replace_token("incrkey", conn.key);
@@ -274,7 +274,7 @@ int execute_polling(string userid) {
   obj->out_replace_token("requestpath", requestpath);
   obj->out_replace();
   int ret = obj->out_commit();
-  log(1) << "(" << obj->getFD() << ") Waiting uploading... Status change ( polling -> uploading )" << endl;
+  log(0) << "(" << obj->getFD() << ") Waiting uploading... Status change ( polling -> uploading )" << endl;
   pthread_mutex_lock(&mutex_connections);
   connections[userid].status = "uploading";
   pthread_mutex_unlock(&mutex_connections);
@@ -300,7 +300,8 @@ int request_handler( ehttp_ptr obj ) {
   }
   pthread_mutex_lock(&mutex_connections);
   connection conn = connections[userid];
-  log(1) << "Request Handler accepted...(" << userid << "/" << (conn.fd_polling.get() != NULL) << "/" << (conn.fd_request.get() != NULL) << ")" << endl;
+  log(1) << "Request Handler accepted..." << endl;
+  // log(0) << "Request Handler accepted...(" << userid << "/" << (conn.fd_polling.get() != NULL) << "/" << (conn.fd_request.get() != NULL) << ")" << endl;
   if (connections.count(userid) > 0 && conn.fd_request.get() != NULL) {
     removeConnection(userid);
   }
@@ -311,7 +312,7 @@ int request_handler( ehttp_ptr obj ) {
   boost::uuids::uuid u = gen();
   connections[userid].key = to_string(u); //TODO(bigeye): make more shorter uuid
   connections[userid].status = "polling";
-  log(1) << "Set request info (fd_request=" << (connections[userid].fd_request)->getFD() << ", command=" << connections[userid].command << ", requestpath=" << connections[userid].requestpath <<", key=" << connections[userid].key << ",status=" << connections[userid].status << ")" << endl;
+  log(0) << "Set request info (fd_request=" << (connections[userid].fd_request)->getFD() << ", command=" << connections[userid].command << ", requestpath=" << connections[userid].requestpath <<", key=" << connections[userid].key << ",status=" << connections[userid].status << ")" << endl;
   pthread_mutex_unlock(&mutex_connections);
   return execute_polling(userid);
 }
@@ -353,7 +354,7 @@ int upload_handler( ehttp_ptr obj ) {
     return EHTTP_ERR_GENERIC;
   }
 
-  log(1) << "Set agent info" << endl;
+  log(0) << "Set agent info" << endl;
 
   pthread_mutex_lock(&mutex_connections);
   connections[userid].fd_polling = ehttp_ptr(obj);
@@ -401,7 +402,7 @@ int upload_handler( ehttp_ptr obj ) {
     } else {
       request->out_set_file("request.json");
 
-      log(1) << "jsondata : " << jsondata << endl;
+      log(0) << "jsondata : " << jsondata << endl;
       request->out_replace_token("jsondata",jsondata);
       request->out_replace();
       request->out_commit();
