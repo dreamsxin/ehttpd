@@ -20,10 +20,8 @@ void *epoll_thread(void *) {
 void DrEpoll::init() {
   g_epoll_fd = epoll_create(EPOLL_EVENTS);
   if(g_epoll_fd < 0) {
-    printf("[ETEST] Epoll create Fails.\n");
     return;
   }
-  printf("[ETEST][START] epoll creation success\n");
 
   pthread_t threads[EPOLL_THREADS];
   /* create threads */
@@ -49,7 +47,6 @@ void DrEpoll::add(download_ptr dn) {
   event.data.ptr = (void *)dn.get();
 
   if (epoll_ctl(g_epoll_fd, EPOLL_CTL_ADD, fd, &event) < 0) {
-    printf("[ETEST] Epoll control fails.in epoll_cli_add\n");
     // return false;
   }
 }
@@ -72,11 +69,11 @@ bool DrEpoll::process() {
 
     int r1, r2;
 
-    log(1) << "upload fd:" << dn->fd_upload->getFD() << " dn:" << dn->fd_download->getFD() << endl;
+    // log(1) << "upload fd:" << dn->fd_upload->getFD() << " dn:" << dn->fd_download->getFD() << endl;
 
     r1 = dn->fd_upload->pRecv((void*) (dn->fd_upload->getFD()), buffer, sizeof(buffer));
     if (r1 < 0) {
-      log(1) << "close r1 rem:" << dn->remaining << " r1: " << r1 << endl;
+      log(0) << "close r1 rem:" << dn->remaining << " r1: " << r1 << endl;
       epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, &(events[i]));
       dn->close();
       downloads.erase(dn->key);
@@ -84,14 +81,14 @@ bool DrEpoll::process() {
     }
     r2 = dn->fd_download->pSend((void *) (dn->fd_download->getFD()), buffer, r1);
     if (r2 < 0 || r1 != r2) {
-      log(1) << "close r2 rem:" << dn->remaining << " r2: " << r2 << endl;
+      log(0) << "close r2 rem:" << dn->remaining << " r2: " << r2 << endl;
       epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, &(events[i]));
       dn->close();
       downloads.erase(dn->key);
       continue;
     }
 
-    log(1) << "download r:" << dn->remaining << " r2: " << r2 << endl;
+    // log(0) << "download r:" << dn->remaining << " r2: " << r2 << endl;
 
     dn->remaining -= r2;
     if (dn->remaining <= 0) {

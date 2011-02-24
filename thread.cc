@@ -106,6 +106,7 @@ void dieConnection(string userid, const string &error_message) {
     return;
   }
   pthread_mutex_lock(&mutex_connections);
+
   if (connections[userid].fd_polling.get() != NULL) {
     connections[userid].fd_polling->error(error_message);
   }
@@ -298,6 +299,7 @@ int request_handler( ehttp_ptr obj ) {
     safeClose(userid, obj.get());
     return EHTTP_ERR_OK;
   }
+
   pthread_mutex_lock(&mutex_connections);
   connection conn = connections[userid];
   log(1) << "Request Handler accepted..." << endl;
@@ -492,14 +494,17 @@ void handle_sigs(int signo) {
   log(0) << "Signal(" << signo << ") is ignored" << endl;
 }
 
-int main() {
-  if (fork() != 0) {
-    exit(0);
+int main(int argc, char** args) {
+
+  if (argc <= 1 || strcmp(args[1], "run") != 0 ) {
+    if (fork() != 0) {
+      exit(0);
+    }
+    signal(SIGHUP, handle_sigs);
+    signal(SIGINT, handle_sigs);
+    signal(SIGTERM, handle_sigs);
+    signal(SIGQUIT, handle_sigs);
   }
-  signal(SIGHUP, handle_sigs);
-  signal(SIGINT, handle_sigs);
-  signal(SIGTERM, handle_sigs);
-  signal(SIGQUIT, handle_sigs);
 
   fstream pidfile;
   //TODO(donghyun): option
@@ -545,15 +550,15 @@ int main() {
   struct sockaddr_in client_addr;
   socklen_t sin_size = sizeof(struct sockaddr_in);
 
-  log(1) << "Listen..." << endl;
+  log(1) << "DR Server Start! Listen..." << endl;
   for( ; ; ) {
     if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
-      perror("accept\n");
       exit(1);
     }
+    nonblock(clifd);
     //    nonblock(clifd);
     pthread_mutex_lock(&new_connection_mutex);
-    log(1) << "Accepted... " << clifd << "  / Queue size : " << clifd << " / count : " << conn_pool.size() << endl;
+    log(1) << "Accepted... " << clifd << "  / Queue size : " << conn_pool.size() << " / Thread: " << MAX_THREAD << endl;
     conn_pool.push_back(clifd);
     pthread_mutex_unlock(&new_connection_mutex);
   }

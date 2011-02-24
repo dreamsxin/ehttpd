@@ -452,7 +452,8 @@ int ehttp::parse_header(string &header) {
   case EHTTP_REQUEST_PUT: request_string_type = "PUT"; break;
   default: request_string_type = "DEFAULT";
   }
-  log(1) << "URL: " << filename << " (" << request_string_type << ")" << endl;
+  log(1) << "URL: " << filename << " [" << request_string_type << "]"
+         << " (" << getFD() << ")" << endl;
 
   // Save the complete URL
   url=filename;
