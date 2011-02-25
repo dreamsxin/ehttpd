@@ -90,7 +90,7 @@ static int ehttp_inst_count = 0;
 
 typedef char Byte;
 
-class ehttp: public boost::enable_shared_from_this<ehttp> {
+class Ehttp: public boost::enable_shared_from_this<Ehttp> {
   int fdState;
   int sock;
   int filetype;
@@ -109,10 +109,10 @@ class ehttp: public boost::enable_shared_from_this<ehttp> {
   map <string, string> replace_token;
   map <string, string> response_header;
 
-  typedef shared_ptr<ehttp> ehttp_ptr;
-  map <string, int (*)(ehttp_ptr obj)> handler_map;
-  int (*pDefaultHandler)(ehttp_ptr obj);
-  void (*pPreRequestHandler)(ehttp_ptr obj);
+  typedef shared_ptr<Ehttp> EhttpPtr;
+  map <string, int (*)(EhttpPtr obj)> handler_map;
+  int (*pDefaultHandler)(EhttpPtr obj);
+  void (*pPreRequestHandler)(EhttpPtr obj);
 
   int read_header(string *header);
   int parse_header(string &header);
@@ -134,24 +134,24 @@ public:
   ssize_t (*pSend)(void *ctx, const void *buf, size_t len);
 
   /****************************************************************
-   Constructor: ehttp
+   Constructor: Ehttp
    Does nothing exciting, use init() to initalize the class
    instantiation
    */
-  ehttp(){
+  Ehttp(){
     fdState=0;
     ++ehttp_inst_count;
-    log(0) << "new ehttp() : " << ehttp_inst_count <<  endl;
+    log(0) << "new Ehttp() : " << ehttp_inst_count <<  endl;
     response_header["Content-Type"] = "text/html; charset=utf-8";
   };
 
   /*
-   Destructor: ehttp
+   Destructor: Ehttp
    Does nothing exciting.
    */
-  ~ehttp(){
+  ~Ehttp(){
     --ehttp_inst_count;
-    log(0) << "~ehttp() : " << ehttp_inst_count <<  endl;
+    log(0) << "~Ehttp() : " << ehttp_inst_count <<  endl;
     if (!isClose())
       error("Critial Error");
   };
@@ -206,7 +206,7 @@ public:
 
    Usage:
    Get string reference to the complete URL requested.
-   For use inside a user defined ehttp request handler
+   For use inside a user defined Ehttp request handler
 
    Parameters:
    none
@@ -234,7 +234,7 @@ public:
 
    Usage:
    Get string reference to the URL filename requested.
-   For use inside a user defined ehttp request handler
+   For use inside a user defined Ehttp request handler
 
    Parameters:
    none
@@ -261,7 +261,7 @@ public:
    Usage:
    Return the value of a parameter passed in URL (request)
 
-   For use inside a user defined ehttp request handler
+   For use inside a user defined Ehttp request handler
 
    Parameters:
    char * string, name of URL parameter to retrieve
@@ -273,8 +273,8 @@ public:
 
    http://localhost/doit.html?CMD=DELETE&FILE=foo.txt
 
-   string cmd=ehttp_obj.getUrlParam("CMD");
-   string val=ehttp_obj.getUrlParam("FILE");
+   string cmd=Ehttp_obj.getUrlParam("CMD");
+   string val=Ehttp_obj.getUrlParam("FILE");
 
    cmd contains "DELETE" and val contains "foo.txt"
 
@@ -291,7 +291,7 @@ public:
    Return the value of a POST (form) parameter returned by the
    browser as part of a POST request
 
-   For use inside a user defined ehttp request handler
+   For use inside a user defined Ehttp request handler
 
 
    Parameters:
@@ -305,8 +305,8 @@ public:
 
    http://localhost/postit.html
 
-   string firstname=ehttp_obj.getPostParam("full_name");
-   string button=ehttp_obj.getPostParam("submit");
+   string firstname=Ehttp_obj.getPostParam("full_name");
+   string button=Ehttp_obj.getPostParam("submit");
 
    <input size="40" type="text" name="full_name"</input>
 
@@ -335,7 +335,7 @@ public:
    You can itterate through the list, to know which boxes
    were checked.
 
-   For use inside a user defined ehttp request handler
+   For use inside a user defined Ehttp request handler
 
 
    Parameters:
@@ -378,7 +378,7 @@ public:
 
    Used for dynamic content generation.
 
-   For use inside a user defined ehttp request handler
+   For use inside a user defined Ehttp request handler
 
 
    Parameters:
@@ -416,7 +416,7 @@ public:
 
    Used for dynamic content generation.
 
-   For use inside a user defined ehttp request handler
+   For use inside a user defined Ehttp request handler
 
 
    Parameters:
@@ -612,7 +612,7 @@ public:
 
 
    Example:
-   ehttp  httpd;
+   Ehttp  httpd;
    MyApp  app;
    app.runInThread();
    httpd.init();
@@ -636,17 +636,17 @@ public:
   /****************************************************************
    Member Function:
    void add_handler( char *filename, int
-   (*pHandler)(ehttp &obj));
+   (*pHandler)(Ehttp &obj));
 
 
    Usage:
-   Add a request handler function to the ehttp parser instance
+   Add a request handler function to the Ehttp parser instance
 
 
    Parameters:
    filename -   Name of URL file to handle (index.html for example)
    pHandler -  Pointer to handler funciton, with reference to the
-   ehttp instance, and a void pointer (pointer to app)
+   Ehttp instance, and a void pointer (pointer to app)
 
 
    Returns:
@@ -656,7 +656,7 @@ public:
    Example:
 
    // Handler: diagreport.html
-   int handleDiagReport( ehttp &obj)
+   int handleDiagReport( Ehttp &obj)
    {
    AppToGUI &app=CookieToApp(cookie);
 
@@ -670,7 +670,7 @@ public:
    }
 
 
-   ehttp  httpd;
+   Ehttp  httpd;
    MyApp  app;
    ...
    obj.add_handler("/", handleIndex );
@@ -679,12 +679,12 @@ public:
 
 
    */
-  void add_handler( char *filename, int (*pHandler)(ehttp_ptr obj));
+  void add_handler( char *filename, int (*pHandler)(EhttpPtr obj));
 
 
   /****************************************************************
    Member Function:
-   void set_prerequest_handler( void (*pHandler)(ehttp &obj, void *cookie));
+   void set_prerequest_handler( void (*pHandler)(Ehttp &obj, void *cookie));
 
    Usage:
    Sets a handler function to be called for all specified requests handlers
@@ -698,7 +698,7 @@ public:
    browser type in every request handler function
 
    */
-  void set_prerequest_handler( void (*pHandler)(ehttp_ptr obj));
+  void set_prerequest_handler( void (*pHandler)(EhttpPtr obj));
 
   /****************************************************************
    Member Function:
@@ -774,4 +774,4 @@ public:
   int error(const string &error_message);
 };
 
-typedef shared_ptr<ehttp> ehttp_ptr;
+typedef shared_ptr<Ehttp> EhttpPtr;

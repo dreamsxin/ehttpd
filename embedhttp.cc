@@ -42,7 +42,7 @@
 #include "./embedhttp.h"
 #include <assert.h>
 
-ssize_t ehttpRecv(void *fd, void *buf, size_t len) {
+ssize_t EhttpRecv(void *fd, void *buf, size_t len) {
   int ret = recv((int)fd,buf,len,0);
   if (ret == -1) {
     int nError = errno;
@@ -51,83 +51,83 @@ ssize_t ehttpRecv(void *fd, void *buf, size_t len) {
   return ret;
 }
 
-ssize_t ehttpSend(void *fd, const void *buf, size_t len) {
+ssize_t EhttpSend(void *fd, const void *buf, size_t len) {
   return send((int)fd,buf,len,0);
 }
 
-int ehttp::getRequestType(void) {
+int Ehttp::getRequestType(void) {
   return requesttype;
 }
 
-bool ehttp::isGetRequest(void) {
+bool Ehttp::isGetRequest(void) {
   return (requesttype==EHTTP_REQUEST_GET);
 }
 
-bool ehttp::isPostRequest(void) {
+bool Ehttp::isPostRequest(void) {
   return (requesttype==EHTTP_REQUEST_POST);
 }
 
 
-string &ehttp::getURL(void) {
+string &Ehttp::getURL(void) {
   return url;
 }
 
-string &ehttp::getFilename( void ) {
+string &Ehttp::getFilename( void ) {
   return filename;
 }
 
-string ehttp::getUrlParam(char *key) {
+string Ehttp::getUrlParam(char *key) {
   return global_parms[key];
 }
 
-string ehttp::getPostParam(char *key) {
+string Ehttp::getPostParam(char *key) {
   return global_parms[key];
 }
 
-map <string, string> & ehttp::getPostParams( void ) {
+map <string, string> & Ehttp::getPostParams( void ) {
   return global_parms;
 }
 
-map <string, string> & ehttp::getUrlParams( void ) {
+map <string, string> & Ehttp::getUrlParams( void ) {
   return global_parms;
 }
 
-map <string, string> & ehttp::getRequestHeaders( void ) {
+map <string, string> & Ehttp::getRequestHeaders( void ) {
   return request_header;
 }
 
-string ehttp::getRequestHeader(char *key) {
+string Ehttp::getRequestHeader(char *key) {
   return request_header[key];
 }
 
-void ehttp::out_replace_token( string tok, string val ) {
+void Ehttp::out_replace_token( string tok, string val ) {
   replace_token[tok]=val;
 }
 
-void ehttp::out_set_file( char *fname, int ftype) {
+void Ehttp::out_set_file( char *fname, int ftype) {
   outfilename = "/home/bigeye/workspace/ehttpd/";
   outfilename += fname;
   filetype=ftype;
 }
 
-void ehttp::out_set_file(  string &fname, int ftype) {
+void Ehttp::out_set_file(  string &fname, int ftype) {
   outfilename="/home/bigeye/workspace/ehttpd/" + fname;
   filetype=ftype;
 }
 
-void ehttp::out_buffer_clear(void) {
+void Ehttp::out_buffer_clear(void) {
   outbuffer="";
 }
 
-void ehttp::out_write_str( char *str ) {
+void Ehttp::out_write_str( char *str ) {
   outbuffer+=str;
 }
 
-void ehttp::out_write_str( string &str ) {
+void Ehttp::out_write_str( string &str ) {
   outbuffer+=str;
 }
 
-int ehttp::out_replace(void) {
+int Ehttp::out_replace(void) {
   int r;
   int state=0;
   int err=0;
@@ -207,7 +207,7 @@ int ehttp::out_replace(void) {
 }
 
 
-int ehttp::out_commit_binary(void) {
+int Ehttp::out_commit_binary(void) {
     int err = 0;
     FILE *f = fopen(outfilename.c_str(), "rb");
     char buffer[10240];
@@ -235,7 +235,7 @@ int ehttp::out_commit_binary(void) {
   return err;
 }
 
-int ehttp::out_commit(int header) {
+int Ehttp::out_commit(int header) {
   int w;
   int err = 0;
 
@@ -273,15 +273,15 @@ int ehttp::out_commit(int header) {
   return err;
 }
 
-int ehttp::init(void) {
-  log(0) << "ehttp init..." << endl;
-  pSend = ehttpSend;
-  pRecv = ehttpRecv;
+int Ehttp::init(void) {
+  log(0) << "Ehttp init..." << endl;
+  pSend = EhttpSend;
+  pRecv = EhttpRecv;
   pPreRequestHandler = NULL;
   return EHTTP_ERR_OK;
 }
 
-void ehttp::add_handler(char *filename, int (*pHandler)(ehttp_ptr obj)) {
+void Ehttp::add_handler(char *filename, int (*pHandler)(EhttpPtr obj)) {
   if( !filename ) {
     pDefaultHandler = pHandler;
   } else {
@@ -289,11 +289,11 @@ void ehttp::add_handler(char *filename, int (*pHandler)(ehttp_ptr obj)) {
   }
 }
 
-void ehttp::set_prerequest_handler(void (*pHandler)(ehttp_ptr obj)) {
+void Ehttp::set_prerequest_handler(void (*pHandler)(EhttpPtr obj)) {
   pPreRequestHandler = pHandler;
 }
 
-int ehttp::read_header(string *header) {
+int Ehttp::read_header(string *header) {
   *header = "";
   unsigned int offset = 0;
   log(0) << "read_header..." << endl;
@@ -324,7 +324,7 @@ int ehttp::read_header(string *header) {
   return EHTTP_ERR_OK;
 }
 
-int ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
+int Ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
   string id;
   string value;
   int state = 0;
@@ -380,7 +380,7 @@ int ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
 }
 
 
-int ehttp::parse_header(string &header) {
+int Ehttp::parse_header(string &header) {
   char *request=NULL;
   char *request_end=NULL;
   const char *pHeader=header.c_str();
@@ -521,15 +521,15 @@ int ehttp::parse_header(string &header) {
   return EHTTP_ERR_OK;
 }
 
-int ehttp::getFD() {
+int Ehttp::getFD() {
   return sock;
 }
 
-int ehttp::getContentLength() {
+int Ehttp::getContentLength() {
   return contentlength;
 }
 
-int ehttp::unescape(string *str) {
+int Ehttp::unescape(string *str) {
   size_t found = -1;
   while((found = str->find('%', found+1)) != string::npos) {
     if (found+2 >= str->size()) {
@@ -544,7 +544,7 @@ int ehttp::unescape(string *str) {
   return EHTTP_ERR_OK;
 }
 
-int ehttp::addslash(string *str) {
+int Ehttp::addslash(string *str) {
   string tmp;
   for (unsigned int i = 0; i < str->length(); ++i) {
     if (str->at(i) == '\\') {
@@ -556,7 +556,7 @@ int ehttp::addslash(string *str) {
   return true;
 }
 
-int ehttp::parse_cookie(string &cookie_string) {
+int Ehttp::parse_cookie(string &cookie_string) {
   vector<string> split_result;
   split(split_result, cookie_string, is_any_of(";"), token_compress_on);
   BOOST_FOREACH(string &pair, split_result) {
@@ -572,7 +572,8 @@ int ehttp::parse_cookie(string &cookie_string) {
   }
   return EHTTP_ERR_OK;
 }
-int ehttp:: parse_message() {
+
+int Ehttp:: parse_message() {
   if( !contentlength ) return EHTTP_ERR_OK;
 
   log(0) << "Parsed content length:" << contentlength << endl;
@@ -615,8 +616,8 @@ int ehttp:: parse_message() {
 }
 
 
-int ehttp::parse_request(int fd) {
-  int (*pHandler)(ehttp_ptr obj)=NULL;
+int Ehttp::parse_request(int fd) {
+  int (*pHandler)(EhttpPtr obj)=NULL;
 
   log(0) << "parse_request..." << endl;
   /* Things in the object which must be reset for each request */
@@ -688,29 +689,29 @@ int ehttp::parse_request(int fd) {
   return pHandler( shared_from_this() );
 }
 
-void ehttp::setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len) ) {
+void Ehttp::setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len) ) {
   if( pS )
     pSend=pS;
   else
-    pSend=ehttpSend;
+    pSend=EhttpSend;
 }
 
-void ehttp::setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len) ) {
+void Ehttp::setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len) ) {
   if( pR )
     pRecv=pR;
   else
-    pRecv=ehttpRecv;
+    pRecv=EhttpRecv;
 }
 
-map <string, string> & ehttp::getResponseHeader( void ) {
+map <string, string> & Ehttp::getResponseHeader( void ) {
   return response_header;
 }
 
-int ehttp::isClose() {
+int Ehttp::isClose() {
   return fdState;
 }
 
-void ehttp::close() {
+void Ehttp::close() {
   if (fdState == 1) {
     log(2) << "Connection closed already... (" << sock << ")" << endl;
     return;
@@ -722,7 +723,7 @@ void ehttp::close() {
   fdState = 1;
 }
 
-int ehttp::error(const string &error_message) {
+int Ehttp::error(const string &error_message) {
   log(2) << error_message << "(" << sock << ")" << endl;
   out_set_file("errormessage.json");
   out_replace_token("fail", error_message);

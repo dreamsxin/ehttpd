@@ -1,29 +1,65 @@
+#pragma once
 #include <string>
 #include "embedhttp.h"
 
 using namespace std;
 
-class connection {
+class Request {
 public:
-  ehttp_ptr fd_polling;
-  ehttp_ptr fd_request;
-
+  EhttpPtr ehttp;
+  string userid;
+  string key;
   string command;
   string requestpath;
-  string key;
-  string status;
-
-  connection() {};
-
-  connection(ehttp *fd_request,
-             string command,
-             string requestpath,
-             string key,
-             ehttp *fd_polling,
-             string status) : fd_request(fd_request),
-                           command(command),
-                           requestpath(requestpath),
-                           key(key),
-                           fd_polling(fd_polling),
-                           status(status) {};
 };
+typedef shared_ptr<Request> RequestPtr;
+
+
+class Polling {
+public:
+  EhttpPtr ehttp;
+  string userid;
+  string key;
+  string command;
+  string requestpath;
+};
+typedef shared_ptr<Polling> PollingPtr;
+
+
+class Upload {
+public:
+  EhttpPtr ehttp;
+  string userid;
+  string key;
+  string command;
+  string requestpath;
+};
+typedef shared_ptr<Upload> UploadPtr;
+
+
+class Download {
+public:
+  EhttpPtr ehttp;
+  string userid;
+  string key;
+  string command;
+  string requestpath;
+  int remaining;
+};
+typedef shared_ptr<Download> DownloadPtr;
+
+
+class Transfer {
+public:
+  UploadPtr up;
+  DownloadPtr dn;
+
+  void close() {
+    up->ehttp->close();
+    dn->ehttp->close();
+  };
+  ~Transfer() {
+    close();
+  };
+};
+typedef shared_ptr<Transfer> TransferPtr;

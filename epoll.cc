@@ -8,7 +8,6 @@
 
 #include "epoll.h"
 #include "embedhttp.h"
-#include "download.h"
 
 #include "log.h"
 
@@ -32,19 +31,19 @@ void DrEpoll::init() {
   //  mutex_pool = PTHREAD_MUTEX_INITIALIZER;
 }
 
-void DrEpoll::add(download_ptr dn) {
-  if (dn->remaining <= 0) {
-    dn->close();
+void DrEpoll::add(TransferPtr trans) {
+  if (trans->dn->remaining <= 0) {
+    trans->close();
     return;
   }
 
   struct epoll_event event;
-  int fd = dn->fd_upload->getFD();
+  int fd = trans->up->ehttp->getFD();
   event.events = EPOLLIN | EPOLLONESHOT;
   event.data.fd = fd;
 
-  downloads[dn->key] = dn;
-  event.data.ptr = (void *)dn.get();
+  transfers[trans->dn->key] = trans;
+  event.data.ptr = (void *)trans.get();
 
   if (epoll_ctl(g_epoll_fd, EPOLL_CTL_ADD, fd, &event) < 0) {
     // return false;
@@ -61,45 +60,48 @@ bool DrEpoll::process() {
     return false; /* return but this is epoll wait error */
   }
 
-  char buffer[8196];
+  char buffer[10000];
   for (int i = 0 ; i < nfds ; i++) {
 
-    download *dn = (download *)events[i].data.ptr;
-    int fd = dn->fd_upload->getFD();
+    Transfer *trans = (Transfer *)events[i].data.ptr;
+    int fd = trans->up->ehttp->getFD();
+
+    log(1) << "up::" << fd << endl;
 
     int r1, r2;
-
     // log(1) << "upload fd:" << dn->fd_upload->getFD() << " dn:" << dn->fd_download->getFD() << endl;
 
-    r1 = dn->fd_upload->pRecv((void*) (dn->fd_upload->getFD()), buffer, sizeof(buffer));
+    r1 = trans->up->ehttp->pRecv((void*) (trans->up->ehttp->getFD()), buffer, sizeof(buffer));
     if (r1 < 0) {
-      log(0) << "close r1 rem:" << dn->remaining << " r1: " << r1 << endl;
+      log(1) << "close r1 rem:" << trans->dn->remaining << " r1: " << r1 << endl;
       epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, &(events[i]));
-      dn->close();
-      downloads.erase(dn->key);
+      trans->close();
+      transfers.erase(trans->dn->key);
       continue;
     }
-    r2 = dn->fd_download->pSend((void *) (dn->fd_download->getFD()), buffer, r1);
+    log(1) << "download rem:" << trans->dn->remaining << " r1: " << r1 << endl;
+
+    r2 = trans->dn->ehttp->pSend((void *) (trans->dn->ehttp->getFD()), buffer, r1);
     if (r2 < 0 || r1 != r2) {
-      log(0) << "close r2 rem:" << dn->remaining << " r2: " << r2 << endl;
+      log(1) << "close r2 rem:" << trans->dn->remaining << " r2: " << r2 << endl;
       epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, &(events[i]));
-      dn->close();
-      downloads.erase(dn->key);
+      trans->close();
+      transfers.erase(trans->dn->key);
       continue;
     }
 
     // log(0) << "download r:" << dn->remaining << " r2: " << r2 << endl;
 
-    dn->remaining -= r2;
-    if (dn->remaining <= 0) {
+    trans->dn->remaining -= r2;
+    if (trans->dn->remaining <= 0) {
       epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, &(events[i]));
-      dn->close();
-      downloads.erase(dn->key);
+      trans->close();
+      transfers.erase(trans->dn->key);
     } else {
       struct epoll_event event;
       event.events = EPOLLIN | EPOLLONESHOT;
       event.data.fd = fd;
-      event.data.ptr = dn;
+      event.data.ptr = trans;
 
       epoll_ctl(g_epoll_fd, EPOLL_CTL_MOD, fd, &(event));
     }
