@@ -124,6 +124,8 @@ public:
   map <string, string> ptheCookie;
   string message;
 
+  time_t timestamp;
+
   int getFD();
   int getContentLength();
   int unescape(string *str);
@@ -143,6 +145,7 @@ public:
     ++ehttp_inst_count;
     log(0) << "new Ehttp() : " << ehttp_inst_count <<  endl;
     response_header["Content-Type"] = "text/html; charset=utf-8";
+    timestamp = time(NULL);
   };
 
   /*

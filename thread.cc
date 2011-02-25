@@ -9,6 +9,7 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <fcntl.h>
+#include <queue>
 #include <signal.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -44,14 +45,17 @@ map <string, PollingPtr > pollings;  // userid as key
 
 map <string, RequestPtr > requests_key;  // inckey as key
 map <string, UploadPtr > uploads;  // inckey as key
-map <string, DownloadPtr > downloads;  // inckey as key
+
+queue <RequestPtr> queue_requests;
+queue <PollingPtr> queue_pollings;
+queue <RequestPtr> queue_requests_key;
+queue <UploadPtr> queue_uploads;
 
 pthread_mutex_t mutex_requests = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_pollings = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_mutex_t mutex_requests_key = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_uploads = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_downloads = PTHREAD_MUTEX_INITIALIZER;
 
 map <string, map<string, string> > session;
 
@@ -228,6 +232,7 @@ int execute_polling(RequestPtr request, PollingPtr polling) {
   pthread_mutex_lock(&mutex_requests_key);
   requests_key[request->key] = request;
   pthread_mutex_unlock(&mutex_requests_key);
+  queue_requests_key.push(request);
 
   log(1) << "execute_polling: End and assign request:" << request->ehttp->getFD() << endl;
   return ret;
@@ -273,6 +278,7 @@ int request_handler(EhttpPtr obj) {
     pthread_mutex_lock(&mutex_requests);
     requests[userid] = request;
     pthread_mutex_unlock(&mutex_requests);
+    queue_requests.push(request);
   }
   pthread_mutex_unlock(&mutex_pollings);
 
@@ -332,6 +338,7 @@ int polling_handler(EhttpPtr obj) {
   } else {
     log(1) << "Request: Waiting ("
            << obj->getFD() << ")" << endl;
+    queue_pollings.push(polling);
   }
   return 0;
 }
@@ -379,6 +386,7 @@ int upload_handler(EhttpPtr obj) {
     pthread_mutex_lock(&mutex_uploads);
     uploads[upload->key] = upload;
     pthread_mutex_unlock(&mutex_uploads);
+    queue_uploads.push(upload);
 
     // TODO LOG
 
@@ -438,6 +446,68 @@ int download_handler(EhttpPtr obj) {
   return 1;
 }
 
+void *timeout_killer(void *arg) {
+  while(1) {
+    sleep(1);
+    time_t now = time(NULL);
+    while(!queue_requests.empty()) {
+      RequestPtr ptr = queue_requests.front();
+      if (ptr->ehttp->timestamp + 10 <= now) {
+        queue_requests.pop();
+        if (!ptr.unique()) {
+          pthread_mutex_lock(&mutex_requests);
+          requests.erase(ptr->userid);
+          pthread_mutex_unlock(&mutex_requests);
+        }
+      } else {
+        break;
+      }
+    }
+
+    while(!queue_pollings.empty()) {
+      PollingPtr ptr = queue_pollings.front();
+      if (ptr->ehttp->timestamp + 10 <= now) {
+        queue_pollings.pop();
+        if (!ptr.unique()) {
+          pthread_mutex_lock(&mutex_pollings);
+          pollings.erase(ptr->userid);
+          pthread_mutex_unlock(&mutex_pollings);
+        }
+      } else {
+        break;
+      }
+    }
+
+    while(!queue_requests_key.empty()) {
+      RequestPtr ptr = queue_requests_key.front();
+      if (ptr->ehttp->timestamp + 10 <= now) {
+        queue_requests_key.pop();
+        if (!ptr.unique()) {
+          pthread_mutex_lock(&mutex_requests_key);
+          requests_key.erase(ptr->key);
+          pthread_mutex_unlock(&mutex_requests_key);
+        }
+      } else {
+        break;
+      }
+    }
+
+    while(!queue_uploads.empty()) {
+      UploadPtr ptr = queue_uploads.front();
+      if (ptr->ehttp->timestamp + 10 <= now) {
+        queue_uploads.pop();
+        log(1) << "UPLOADQUEUE:" << ptr.use_count() << "(" << ptr->ehttp->timestamp <<" / "<<now<<")"<<endl;
+        if (!ptr.unique()) {
+          pthread_mutex_lock(&mutex_uploads);
+          uploads.erase(ptr->key);
+          pthread_mutex_unlock(&mutex_uploads);
+        }
+      } else {
+        break;
+      }
+    }
+  }
+}
 void *main_thread(void *arg) {
   Thread *thread = (Thread *)arg;
 
@@ -517,6 +587,9 @@ int main(int argc, char** args) {
     threads[i].conn_pool = &conn_pool;
     pthread_create(&threads[i].tid, NULL, &main_thread, (void *)&threads[i]);
   }
+
+  pthread_t tid;
+  pthread_create(&tid, NULL, &timeout_killer, NULL);
 
   DrEpoll::get_mutable_instance().init();
 
