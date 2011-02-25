@@ -275,6 +275,13 @@ int execute_polling(string userid) {
   obj->out_replace_token("requestpath", requestpath);
   obj->out_replace();
   int ret = obj->out_commit();
+
+  if (ret != 0) {
+    safeClose(userid, conn.fd_polling.get());
+    safeClose(userid, conn.fd_request.get());
+    return ret;
+  }
+
   log(0) << "(" << obj->getFD() << ") Waiting uploading... Status change ( polling -> uploading )" << endl;
   pthread_mutex_lock(&mutex_connections);
   connections[userid].status = "uploading";
@@ -456,6 +463,7 @@ void *main_thread(void *arg) {
   while (1) {
     // fetch a new job.
     int socket;
+    log(1) << "FETCH START! THREAD:" << thread->tid << endl;
     for(;;) {
       sleep(1);
       pthread_mutex_lock(&new_connection_mutex);
@@ -467,6 +475,7 @@ void *main_thread(void *arg) {
       }
       pthread_mutex_unlock(&new_connection_mutex);
     }
+    log(1) << "FETCH END! THREAD:" << thread->tid << endl;
 
     // job
     ehttp_ptr http = ehttp_ptr(new ehttp());
@@ -480,13 +489,15 @@ void *main_thread(void *arg) {
 
     http->parse_request(socket);
 
+    log(1) << "FETCH WORK END! THREAD:" << thread->tid << endl;
+
+
     // if (http->isClose()) {
     //   delete http;
     // }
 
     // pthread_mutex_lock(&new_connection_mutex);
     // pthread_mutex_unlock(&new_connection_mutex);
-
   }
 }
 
@@ -555,8 +566,8 @@ int main(int argc, char** args) {
     if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
       exit(1);
     }
-    nonblock(clifd);
     //    nonblock(clifd);
+    nonblock(clifd);
     pthread_mutex_lock(&new_connection_mutex);
     log(1) << "Accepted... " << clifd << "  / Queue size : " << conn_pool.size() << " / Thread: " << MAX_THREAD << endl;
     conn_pool.push_back(clifd);

@@ -148,7 +148,7 @@ int ehttp::out_replace(void) {
   }
   while( err== 0 && !feof(f) && f ) {
     r=fread(buffer,1,sizeof(buffer),f);
-    if( r < 0 ) return -1;
+    if( r <= 0 || fdState == 1) return -1;
     // Read in the buffer and find tokens along the way
     for(int i=0;i<r;i++) {
       c=buffer[i];
@@ -219,7 +219,7 @@ int ehttp::out_commit_binary(void) {
         int total = remain;
         while(remain) {
           int w = pSend((void *)sock, buffer + (total - remain), remain);
-          if(w < 0) {
+          if(w < 0 || fdState == 1) {
             err = w;
             remain = 0;
             fseek(f, SEEK_END, 0L);
@@ -259,10 +259,10 @@ int ehttp::out_commit(int header) {
   log(0) << "Response : [[[" + outbuffer + "]]]" << endl;
   int remain = outbuffer.length();
   int total = remain;
-  while(remain) {
+  while (remain > 0) {
     w=pSend((void *)sock, outbuffer.c_str() + (total - remain), remain);
     log(0) << w << endl;
-    if(w < 0) {
+    if(w < 0 || fdState == 1) {
       err = w;
       remain = 0;
     } else {
@@ -301,7 +301,10 @@ int ehttp::read_header(string *header) {
 
   while((offset = header->find("\r\n\r\n")) == string::npos) {
     int r = pRecv((void*)sock, buffer, INPUT_BUFFER_SIZE - 1);
-    if(r < 0) {
+
+    log(1) << "read_header("<<sock<<") r:" << r << "/fdState : " << fdState << endl;
+
+    if(r <= 0 || fdState == 1) {
       return EHTTP_ERR_GENERIC;
     }
 
@@ -586,7 +589,7 @@ int ehttp:: parse_message() {
     Byte buffer[INPUT_BUFFER_SIZE];
     while(contentlength > message.length()) {
       int r = pRecv((void*)sock, buffer, INPUT_BUFFER_SIZE - 1);
-      if(r < 0) {
+      if(r <= 0 || fdState == 1) {
         return EHTTP_ERR_GENERIC;
       }
       log(0) << "r=" << r << ", remain=" << (contentlength - message.length())
@@ -629,15 +632,20 @@ int ehttp::parse_request(int fd) {
   string header;
   string message;
 
+
+  log(1) << "FD:" << fd << " read_header" << endl;
   if(read_header(&header) != EHTTP_ERR_OK) {
     log(2) << "Error parsing request" << endl;
     return EHTTP_ERR_GENERIC;
   }
 
+  log(1) << "FD:" << fd << " parse_header" << endl;
   if(parse_header(header) != EHTTP_ERR_OK) {
     log(2) << "Error parsing request" << endl;
     return EHTTP_ERR_GENERIC;
   }
+
+  log(1) << "FD:" << fd << " if(requesttyp ..." << endl;
 
   if(requesttype != EHTTP_REQUEST_PUT && parse_message() != EHTTP_ERR_OK) {
     log(2) << "Error parsing request" << endl;
@@ -646,19 +654,25 @@ int ehttp::parse_request(int fd) {
 
   // We are HTTP1.0 and need the content len to be valid
   // Opera Broswer
+  log(1) << "FD:" << fd << " if( contentlength==0 && requesttype==EHTTP_REQUEST_POST ) {" << endl;
   if( contentlength==0 && requesttype==EHTTP_REQUEST_POST ) {
     log(2) << "Content Length is 0 and requesttype is EHTTP_REQUEST_POST" << endl;
     return out_commit(EHTTP_LENGTH_REQUIRED);
   }
 
+  log(1) << "FD:" << fd << " out_buffer_clear" << endl;
+
   //Call the default handler if we didn't get the filename
   out_buffer_clear();
 
+  log(1) << "FD:" << fd << " pPreRequestHandler" << endl;
   if( pPreRequestHandler ) pPreRequestHandler( shared_from_this() );
   if( !filename.length() ) {
     log(2) << __LINE__ << " Call default handler no filename" << endl;
     return pDefaultHandler( shared_from_this() );
   }
+
+  log(1) << "FD:" << fd << " pHandler=handler_map[filename]" << endl;
 
   //Lookup the handler function fo this filename
   pHandler=handler_map[filename];
@@ -668,6 +682,7 @@ int ehttp::parse_request(int fd) {
     return pDefaultHandler( shared_from_this() );
   }
 
+  log(1) << "FD:" << fd << " pHandler( shared_from_this() " << endl;
   log(0) << __LINE__ << " Call user handler" << endl;
   return pHandler( shared_from_this() );
 }
@@ -700,6 +715,8 @@ void ehttp::close() {
     return;
   }
   log(1) << "Connection close... (" << sock << ")" << endl;
+  // ::close(sock);
+  ::shutdown(sock, SHUT_RDWR);
   ::close(sock);
   fdState = 1;
 }
