@@ -463,7 +463,7 @@ void *main_thread(void *arg) {
   while (1) {
     // fetch a new job.
     int socket;
-    log(1) << "FETCH START! THREAD:" << thread->tid << endl;
+    log(0) << "FETCH START! THREAD:" << thread->tid << endl;
     for(;;) {
       sleep(1);
       pthread_mutex_lock(&new_connection_mutex);
@@ -475,7 +475,7 @@ void *main_thread(void *arg) {
       }
       pthread_mutex_unlock(&new_connection_mutex);
     }
-    log(1) << "FETCH END! THREAD:" << thread->tid << endl;
+    log(0) << "FETCH END! THREAD:" << thread->tid << endl;
 
     // job
     ehttp_ptr http = ehttp_ptr(new ehttp());
@@ -489,7 +489,7 @@ void *main_thread(void *arg) {
 
     http->parse_request(socket);
 
-    log(1) << "FETCH WORK END! THREAD:" << thread->tid << endl;
+    log(0) << "FETCH WORK END! THREAD:" << thread->tid << endl;
 
 
     // if (http->isClose()) {
