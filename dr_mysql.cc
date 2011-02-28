@@ -15,6 +15,7 @@
 #include <resultset_metadata.h>
 #include <exception.h>
 #include <warning.h>
+#include <exception>
 
 #define DBHOST "tcp://directreader.co.kr:3306"
 #define USER "namilee"
@@ -34,7 +35,10 @@ void DrMysql::connect() {
 }
 
 void DrMysql::close() {
-  con -> close();
+  try{
+    con -> close();
+  }catch(std::exception const& e) {
+  }
 }
 
 bool DrMysql::login(string const &email, string const &password,
