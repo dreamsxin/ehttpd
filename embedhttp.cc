@@ -100,12 +100,12 @@ string Ehttp::getRequestHeader(char *key) {
   return request_header[key];
 }
 
-void Ehttp::out_replace_token( string tok, string val ) {
+void Ehttp::out_replace_token(string tok, string val) {
   replace_token[tok]=val;
 }
 
-void Ehttp::out_set_file(  string fname, int ftype) {
-  outfilename=fname;
+void Ehttp::out_set_file(string fname, int ftype) {
+  outfilename=template_path + fname;
   filetype=ftype;
 }
 
@@ -113,11 +113,11 @@ void Ehttp::out_buffer_clear(void) {
   outbuffer="";
 }
 
-void Ehttp::out_write_str( char *str ) {
+void Ehttp::out_write_str(char *str) {
   outbuffer+=str;
 }
 
-void Ehttp::out_write_str( string &str ) {
+void Ehttp::out_write_str(string &str) {
   outbuffer+=str;
 }
 

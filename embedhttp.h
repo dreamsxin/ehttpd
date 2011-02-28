@@ -87,6 +87,7 @@ ssize_t ehttpSend(void *ctx, const void *buf, size_t len);
  */
 
 static int ehttp_inst_count = 0;
+static string template_path = "/home/bigeye/workspace/ehttpd/";
 
 typedef char Byte;
 
