@@ -34,5 +34,5 @@ mysql_test : dr_mysql.o mysql_test.o
 	$(CXX) $(CXXFLAGS) -o $(BIN)/mysql_test -lmysqlcppconn $^
 
 $(DRSERVER) : thread.o embedhttp.o dr_mysql.o log.o epoll.o
-	$(CXX) $(CXXFLAGS) -o $(BIN)/$(DRSERVER) -lpthread -lmysqlcppconn $^
+	$(CXX) $(CXXFLAGS) -o $(BIN)/$(DRSERVER) -lpthread -lmysqlcppconn -lboost_program_options $^
 

@@ -26,11 +26,15 @@
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
+#include <boost/program_options/options_description.hpp>
+#include <boost/program_options/variables_map.hpp>
+#include <boost/program_options/parsers.hpp>
+
 using namespace std;
+namespace po = boost::program_options;
 
 #define MAX_THREAD 20
 #define PORT 8080
-
 int cnt=0;
 int listenfd;
 int cookie_index=1;
@@ -63,6 +67,9 @@ pthread_mutex_t new_connection_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 DrMysql db;
 
+string hostname = "dlp.jiran.com:8080";
+string template_path = "/home/bigeye/workspace/ehttpd/";
+
 void nonblock(int sockfd) {
   int opts;
   opts = fcntl(sockfd, F_GETFL);
@@ -78,7 +85,7 @@ void nonblock(int sockfd) {
 }
 
 void loginFail (EhttpPtr obj) {
-  obj->out_set_file("stringtemplate.json");
+  obj->out_set_file(template_path + "stringtemplate.json");
   obj->out_replace_token("string","Login required");
   obj->out_replace();
   obj->out_commit();
@@ -86,7 +93,7 @@ void loginFail (EhttpPtr obj) {
 }
 
 int handleDefault(EhttpPtr obj) {
-  obj->out_set_file("helloworld_template.html");
+  obj->out_set_file(template_path + "helloworld_template.html");
   obj->out_replace_token("MESSAGE", "Hello World");
   obj->out_replace();
   int ret = obj->out_commit();
@@ -108,8 +115,9 @@ int login_handler(EhttpPtr obj) {
       string sessionid = to_string(u);
       obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid;
       session[sessionid]["user_id"] = user_id;
-      obj->out_set_file("login.json");
+      obj->out_set_file(template_path + "login.json");
       obj->out_replace_token("macaddress", macaddress);
+      obj->out_replace_token("hostname", hostname);
       log(1) << email << " login success" << endl;
 
     } else if (installkey.length() > 0 && db.login(email, installkey, &user_id, &macaddress)) {
@@ -118,8 +126,9 @@ int login_handler(EhttpPtr obj) {
       string sessionid = to_string(u);
       obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid;
       session[sessionid]["user_id"] = user_id;
-      obj->out_set_file("login.json");
+      obj->out_set_file(template_path + "login.json");
       obj->out_replace_token("macaddress", macaddress);
+      obj->out_replace_token("hostname", hostname);
       log(1) << email << " login success" << endl;
     } else {
       string msg = user_id + " login fail";
@@ -128,7 +137,7 @@ int login_handler(EhttpPtr obj) {
     //    log(0) << "mac : " << macaddress << endl;
   } else {
     log(0) << "GET" << endl;
-    obj->out_set_file("login_page.html");
+    obj->out_set_file(template_path + "login_page.html");
   }
   obj->out_replace();
   int ret = obj->out_commit();
@@ -215,7 +224,7 @@ int execute_polling(RequestPtr request, PollingPtr polling) {
   polling->command = request->command;
   polling->requestpath = request->requestpath;
 
-  polling->ehttp->out_set_file("polling.json");
+  polling->ehttp->out_set_file(template_path + "polling.json");
   polling->ehttp->out_replace_token("incrkey", polling->key);
   polling->ehttp->out_replace_token("command", polling->command);
   string path = polling->requestpath;
@@ -250,7 +259,7 @@ int request_handler(EhttpPtr obj) {
   string userid = session[session_id]["user_id"];
   if (obj->getUrlParams()["command"] == "logout") {
     session.erase(session_id);
-    obj->out_set_file("request.json");
+    obj->out_set_file(template_path + "request.json");
     obj->out_replace_token("jsondata", "");
     obj->out_replace();
     obj->out_commit();
@@ -370,8 +379,8 @@ int upload_handler(EhttpPtr obj) {
   }
 
   if (command == "getfile") {
-    request->ehttp->out_set_file("request.json");
-    request->ehttp->out_replace_token("jsondata","{\"filedownurl\":\"http://dlp.jiran.com:8080/download?incrkey=" + key + "\"}");
+    request->ehttp->out_set_file(template_path + "request.json");
+    request->ehttp->out_replace_token("jsondata","{\"filedownurl\":\"http://" + hostname + "/download?incrkey=" + key + "\"}");
     request->ehttp->out_replace();
     request->ehttp->out_commit();
     request->ehttp->close();
@@ -392,13 +401,13 @@ int upload_handler(EhttpPtr obj) {
 
   } else {
     log(0) << "jsondata : " << jsondata << endl;
-    request->ehttp->out_set_file("request.json");
+    request->ehttp->out_set_file(template_path + "request.json");
     request->ehttp->out_replace_token("jsondata", jsondata);
     request->ehttp->out_replace();
     request->ehttp->out_commit();
     request->ehttp->close();
 
-    obj->out_set_file("polling.json");
+    obj->out_set_file(template_path + "polling.json");
     obj->out_replace_token("incrkey","");
     obj->out_replace_token("command","");
     obj->out_replace_token("requestpath","");
@@ -557,8 +566,28 @@ void handle_sigs(int signo) {
 }
 
 int main(int argc, char** args) {
+  po::options_description desc("Allowed options");
+  desc.add_options()
+    ("run", "run in foreground")
+    ("h", po::value<string>(), "hostname")
+    ("template_path", po::value<string>(), "template path")
+    ;
 
-  if (argc <= 1 || strcmp(args[1], "run") != 0 ) {
+  po::variables_map vm;
+  store(po::parse_command_line(argc, args, desc), vm);
+  po::notify(vm);
+
+  if (vm.count("h")) {
+    hostname = vm["h"].as<string>(); 
+  }
+
+  if (vm.count("template_path")) {
+    template_path = vm["template_path"].as<string>(); 
+  }
+    
+  
+
+  if (vm.count("run") == 0) {
     if (fork() != 0) {
       exit(0);
     }

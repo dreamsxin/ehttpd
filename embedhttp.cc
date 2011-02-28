@@ -104,14 +104,8 @@ void Ehttp::out_replace_token( string tok, string val ) {
   replace_token[tok]=val;
 }
 
-void Ehttp::out_set_file( char *fname, int ftype) {
-  outfilename = "/home/bigeye/workspace/ehttpd/";
-  outfilename += fname;
-  filetype=ftype;
-}
-
-void Ehttp::out_set_file(  string &fname, int ftype) {
-  outfilename="/home/bigeye/workspace/ehttpd/" + fname;
+void Ehttp::out_set_file(  string fname, int ftype) {
+  outfilename=fname;
   filetype=ftype;
 }
 

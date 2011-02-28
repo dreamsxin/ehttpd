@@ -411,7 +411,7 @@ public:
   /****************************************************************
    Member Function:
    void out_set_file( char *fname, int ftype=EHTTP_TEXT_FILE);
-   void out_set_file( string &fname, int ftype=EHTTP_TEXT_FILE);
+   void out_set_file( string fname, int ftype=EHTTP_TEXT_FILE);
 
 
    Usage:
@@ -443,8 +443,7 @@ public:
    obj.out_commit();
 
    */
-  void out_set_file( char *fname, int ftype=EHTTP_TEXT_FILE);
-  void out_set_file( string &fname, int ftype=EHTTP_TEXT_FILE);
+  void out_set_file( string fname, int ftype=EHTTP_TEXT_FILE);
 
   /****************************************************************
    Member Function:
