@@ -580,12 +580,13 @@ int main(int argc, char** args) {
   if (vm.count("h")) {
     hostname = vm["h"].as<string>(); 
   }
+  
   if (vm.count("p")) {
     PORT = vm["p"].as<int>(); 
   }
 
   if (vm.count("template_path")) {
-    template_path = vm["template_path"].as<string>(); 
+    Ehttp::set_template_path(vm["template_path"].as<string>()); 
   }
     
   

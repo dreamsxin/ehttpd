@@ -42,6 +42,8 @@
 #include "./embedhttp.h"
 #include <assert.h>
 
+string Ehttp::template_path = "./";
+
 ssize_t EhttpRecv(void *fd, void *buf, size_t len) {
   int ret = recv((int)fd,buf,len,0);
   if (ret == -1) {
@@ -66,7 +68,6 @@ bool Ehttp::isGetRequest(void) {
 bool Ehttp::isPostRequest(void) {
   return (requesttype==EHTTP_REQUEST_POST);
 }
-
 
 string &Ehttp::getURL(void) {
   return url;

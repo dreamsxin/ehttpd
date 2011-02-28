@@ -87,11 +87,11 @@ ssize_t ehttpSend(void *ctx, const void *buf, size_t len);
  */
 
 static int ehttp_inst_count = 0;
-static string template_path = "/home/bigeye/workspace/ehttpd/";
 
 typedef char Byte;
 
 class Ehttp: public boost::enable_shared_from_this<Ehttp> {
+  static string template_path;
   int fdState;
   int sock;
   int filetype;
@@ -122,6 +122,9 @@ class Ehttp: public boost::enable_shared_from_this<Ehttp> {
   void out_buffer_clear(void);
 
 public:
+  static void set_template_path(string p) {
+    Ehttp::template_path = p;
+  };
   map <string, string> ptheCookie;
   string message;
 
