@@ -778,7 +778,7 @@ public:
   int isClose();
 
   int error(const string &error_message);
-  int timeout()
+  int timeout();
 };
 
 typedef shared_ptr<Ehttp> EhttpPtr;
