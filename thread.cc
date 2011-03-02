@@ -475,7 +475,7 @@ void *timeout_killer(void *arg) {
 
     while(!queue_pollings.empty()) {
       PollingPtr ptr = queue_pollings.front();
-      if (ptr->ehttp->timestamp + 120 <= now) {
+      if (ptr->ehttp->timestamp + 60 <= now) {
         queue_pollings.pop();
         if (!ptr.unique()) {
           pthread_mutex_lock(&mutex_pollings);
