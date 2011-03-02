@@ -38,6 +38,8 @@ int cnt=0;
 int listenfd;
 int cookie_index=1;
 int PORT = 8000;
+int timeout_sec_default = 10;
+int timeout_sec_polling = 15;
 
 typedef struct {
   pthread_t tid;
@@ -67,7 +69,7 @@ pthread_mutex_t new_connection_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 DrMysql db;
 
-string hostname = "dlp.jiran.com:8080";
+string hostname = "";
 
 void nonblock(int sockfd) {
   int opts;
@@ -114,6 +116,7 @@ int login_handler(EhttpPtr obj) {
       string sessionid = to_string(u);
       obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid;
       session[sessionid]["user_id"] = user_id;
+      session[sessionid]["macaddress"] = macaddress;;
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
       obj->out_replace_token("hostname", hostname);
@@ -125,6 +128,7 @@ int login_handler(EhttpPtr obj) {
       string sessionid = to_string(u);
       obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid;
       session[sessionid]["user_id"] = user_id;
+      session[sessionid]["macaddress"] = macaddress;;
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
       obj->out_replace_token("hostname", hostname);
@@ -145,6 +149,25 @@ int login_handler(EhttpPtr obj) {
 
   return ret;
 }
+
+int mac_handler(EhttpPtr obj) {
+  if (!(obj->ptheCookie.count("SESSIONID") > 0 && session.count(obj->ptheCookie["SESSIONID"]) > 0)) {
+    loginFail(obj);
+    return EHTTP_ERR_GENERIC;
+  }
+
+  string session_id = obj->ptheCookie["SESSIONID"];
+  string macaddress = session[session_id]["macaddress"];
+
+  obj->out_set_file("login.json");
+  obj->out_replace_token("macaddress", macaddress);
+  obj->out_replace();
+  int ret = obj->out_commit();
+  obj->close();
+
+  return ret;
+}
+
 
 int execute_downloading(UploadPtr up, DownloadPtr dn) {
   //TODO: execute downloading using epoll
@@ -460,7 +483,7 @@ void *timeout_killer(void *arg) {
     time_t now = time(NULL);
     while(!queue_requests.empty()) {
       RequestPtr ptr = queue_requests.front();
-      if (ptr->ehttp->timestamp + 10 <= now) {
+      if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
         queue_requests.pop();
         if (!ptr.unique()) {
           pthread_mutex_lock(&mutex_requests);
@@ -476,7 +499,7 @@ void *timeout_killer(void *arg) {
 
     while(!queue_pollings.empty()) {
       PollingPtr ptr = queue_pollings.front();
-      if (ptr->ehttp->timestamp + 60 <= now) {
+      if (ptr->ehttp->timestamp + timeout_sec_polling <= now) {
         queue_pollings.pop();
         if (!ptr.unique()) {
           pthread_mutex_lock(&mutex_pollings);
@@ -492,7 +515,7 @@ void *timeout_killer(void *arg) {
 
     while(!queue_requests_key.empty()) {
       RequestPtr ptr = queue_requests_key.front();
-      if (ptr->ehttp->timestamp + 10 <= now) {
+      if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
         queue_requests_key.pop();
         if (!ptr.unique()) {
           pthread_mutex_lock(&mutex_requests_key);
@@ -508,7 +531,7 @@ void *timeout_killer(void *arg) {
 
     while(!queue_uploads.empty()) {
       UploadPtr ptr = queue_uploads.front();
-      if (ptr->ehttp->timestamp + 10 <= now) {
+      if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
         queue_uploads.pop();
         log(1) << "UPLOADQUEUE:" << ptr.use_count() << "(" << ptr->ehttp->timestamp <<" / "<<now<<")"<<endl;
         if (!ptr.unique()) {
@@ -552,6 +575,7 @@ void *main_thread(void *arg) {
     http->add_handler("/request", request_handler);
     http->add_handler("/login", login_handler);
     http->add_handler("/download", download_handler);
+    http->add_handler("/mac", mac_handler);
     http->add_handler(NULL, handleDefault);
 
     http->parse_request(socket);
