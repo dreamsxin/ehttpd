@@ -464,9 +464,10 @@ void *timeout_killer(void *arg) {
         queue_requests.pop();
         if (!ptr.unique()) {
           pthread_mutex_lock(&mutex_requests);
-          ptr->ehttp->timeout();
           requests.erase(ptr->userid);
           pthread_mutex_unlock(&mutex_requests);
+        } else {
+          ptr->ehttp->timeout();
         }
       } else {
         break;
@@ -479,9 +480,10 @@ void *timeout_killer(void *arg) {
         queue_pollings.pop();
         if (!ptr.unique()) {
           pthread_mutex_lock(&mutex_pollings);
-          ptr->ehttp->timeout();
           pollings.erase(ptr->userid);
           pthread_mutex_unlock(&mutex_pollings);
+        } else {
+          ptr->ehttp->timeout();
         }
       } else {
         break;
@@ -494,9 +496,10 @@ void *timeout_killer(void *arg) {
         queue_requests_key.pop();
         if (!ptr.unique()) {
           pthread_mutex_lock(&mutex_requests_key);
-          ptr->ehttp->timeout();
           requests_key.erase(ptr->key);
           pthread_mutex_unlock(&mutex_requests_key);
+        } else {
+          ptr->ehttp->timeout();
         }
       } else {
         break;
@@ -510,9 +513,10 @@ void *timeout_killer(void *arg) {
         log(1) << "UPLOADQUEUE:" << ptr.use_count() << "(" << ptr->ehttp->timestamp <<" / "<<now<<")"<<endl;
         if (!ptr.unique()) {
           pthread_mutex_lock(&mutex_uploads);
-          ptr->ehttp->timeout();
           uploads.erase(ptr->key);
           pthread_mutex_unlock(&mutex_uploads);
+        } else {
+          ptr->ehttp->timeout();
         }
       } else {
         break;
