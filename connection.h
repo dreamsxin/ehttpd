@@ -55,6 +55,7 @@ public:
   DownloadPtr dn;
 
   void close() {
+    up->ehttp->uploadend();
     up->ehttp->close();
     dn->ehttp->close();
   };

@@ -779,6 +779,8 @@ public:
 
   int error(const string &error_message);
   int timeout();
+  int uploadend();
 };
 
 typedef shared_ptr<Ehttp> EhttpPtr;
+

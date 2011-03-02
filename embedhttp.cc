@@ -742,3 +742,13 @@ int Ehttp::timeout() {
   close();
   return EHTTP_ERR_GENERIC;
 }
+
+int Ehttp::uploadend() {
+  log(2) << "(" << sock << ")" << endl;
+  out_set_file("request.json");
+  out_replace_token("jsondata", "");
+  out_replace();
+  out_commit();
+  close();
+  return EHTTP_ERR_GENERIC;
+}
