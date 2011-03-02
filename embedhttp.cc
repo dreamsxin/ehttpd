@@ -241,9 +241,11 @@ int Ehttp::out_commit(int header) {
   if( header == EHTTP_HDR_OK) {
     string headr("HTTP/1.0 200 OK\r\n");
 
-    stringstream ss;
-    ss << outbuffer.length();
-    response_header["Content-Length"] = ss.str();
+    if (response_header.count("Content-Length") == 0) {
+      stringstream ss;
+      ss << outbuffer.size();
+      response_header["Content-Length"] = ss.str();
+    }
 
     map <string, string>::const_iterator iter;
     iter = response_header.begin();
@@ -650,9 +652,13 @@ int Ehttp::parse_request(int fd) {
 
   log(0) << "FD:" << fd << " if(requesttyp ..." << endl;
 
-  if(requesttype != EHTTP_REQUEST_PUT && parse_message() != EHTTP_ERR_OK) {
-    log(2) << "Error parsing request" << endl;
-    return EHTTP_ERR_GENERIC;
+  log(0) << filename << endl;
+  if(filename == "/upload" && global_parms["command"] == "getfile") {
+  } else {
+    if (parse_message() != EHTTP_ERR_OK) {
+      log(2) << "Error parsing request" << endl;
+      return EHTTP_ERR_GENERIC;
+    }
   }
 
   // We are HTTP1.0 and need the content len to be valid
@@ -748,7 +754,7 @@ int Ehttp::timeout() {
 int Ehttp::uploadend() {
   log(2) << "(" << sock << ")" << endl;
   out_set_file("request.json");
-  out_replace_token("jsondata", "");
+  out_replace_token("jsondata", "\"\"");
   out_replace();
   out_commit();
   close();
