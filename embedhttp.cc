@@ -727,3 +727,12 @@ int Ehttp::error(const string &error_message) {
   close();
   return EHTTP_ERR_GENERIC;
 }
+
+int Ehttp::timeout() {
+  log(2) << error_message << "(" << sock << ")" << endl;
+  out_set_file("timeout.json");
+  out_replace();
+  out_commit();
+  close();
+  return EHTTP_ERR_GENERIC;
+}

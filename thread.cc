@@ -460,7 +460,8 @@ void *timeout_killer(void *arg) {
     time_t now = time(NULL);
     while(!queue_requests.empty()) {
       RequestPtr ptr = queue_requests.front();
-      if (ptr->ehttp->timestamp + 10 <= now) {
+      if (ptr->ehttp->timestamp + 20 <= now) {
+        ptr->ehttp->timeout();
         queue_requests.pop();
         if (!ptr.unique()) {
           pthread_mutex_lock(&mutex_requests);
@@ -474,7 +475,8 @@ void *timeout_killer(void *arg) {
 
     while(!queue_pollings.empty()) {
       PollingPtr ptr = queue_pollings.front();
-      if (ptr->ehttp->timestamp + 10 <= now) {
+      if (ptr->ehttp->timestamp + 20 <= now) {
+        ptr->ehttp->timeout();
         queue_pollings.pop();
         if (!ptr.unique()) {
           pthread_mutex_lock(&mutex_pollings);
@@ -488,7 +490,8 @@ void *timeout_killer(void *arg) {
 
     while(!queue_requests_key.empty()) {
       RequestPtr ptr = queue_requests_key.front();
-      if (ptr->ehttp->timestamp + 10 <= now) {
+      if (ptr->ehttp->timestamp + 20 <= now) {
+        ptr->ehttp->timeout();
         queue_requests_key.pop();
         if (!ptr.unique()) {
           pthread_mutex_lock(&mutex_requests_key);
@@ -502,7 +505,8 @@ void *timeout_killer(void *arg) {
 
     while(!queue_uploads.empty()) {
       UploadPtr ptr = queue_uploads.front();
-      if (ptr->ehttp->timestamp + 10 <= now) {
+      if (ptr->ehttp->timestamp + 20 <= now) {
+        ptr->ehttp->timeout();
         queue_uploads.pop();
         log(1) << "UPLOADQUEUE:" << ptr.use_count() << "(" << ptr->ehttp->timestamp <<" / "<<now<<")"<<endl;
         if (!ptr.unique()) {
@@ -578,18 +582,18 @@ int main(int argc, char** args) {
   po::notify(vm);
 
   if (vm.count("h")) {
-    hostname = vm["h"].as<string>(); 
+    hostname = vm["h"].as<string>();
   }
-  
+
   if (vm.count("p")) {
-    PORT = vm["p"].as<int>(); 
+    PORT = vm["p"].as<int>();
   }
 
   if (vm.count("template_path")) {
-    Ehttp::set_template_path(vm["template_path"].as<string>()); 
+    Ehttp::set_template_path(vm["template_path"].as<string>());
   }
-    
-  
+
+
 
   if (vm.count("run") == 0) {
     if (fork() != 0) {
