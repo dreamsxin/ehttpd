@@ -240,6 +240,11 @@ int Ehttp::out_commit(int header) {
 
   if( header == EHTTP_HDR_OK) {
     string headr("HTTP/1.0 200 OK\r\n");
+
+    stringstream ss;
+    ss << outbuffer.length();
+    response_header["Content-Length"] = ss.str();
+
     map <string, string>::const_iterator iter;
     iter = response_header.begin();
     //Send out all the headers you want
@@ -247,6 +252,7 @@ int Ehttp::out_commit(int header) {
       headr += iter->first+string(": ") + iter->second+string("\r\n");
       ++iter;
     }
+
     outbuffer = headr + string("\r\n") + outbuffer;
   } else if(header == EHTTP_LENGTH_REQUIRED) {
     outbuffer=string("HTTP/1.0 411 Length Required\r\n\r\n");
