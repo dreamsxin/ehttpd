@@ -159,7 +159,7 @@ int mac_handler(EhttpPtr obj) {
   string session_id = obj->ptheCookie["SESSIONID"];
   string macaddress = session[session_id]["macaddress"];
 
-  obj->out_set_file("login.json");
+  obj->out_set_file("mac.json");
   obj->out_replace_token("macaddress", macaddress);
   obj->out_replace();
   int ret = obj->out_commit();
