@@ -729,7 +729,7 @@ int Ehttp::error(const string &error_message) {
 }
 
 int Ehttp::timeout() {
-  log(2) << error_message << "(" << sock << ")" << endl;
+  log(2) << "(" << sock << ")" << endl;
   out_set_file("timeout.json");
   out_replace();
   out_commit();
