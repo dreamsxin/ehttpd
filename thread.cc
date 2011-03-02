@@ -33,7 +33,7 @@
 using namespace std;
 namespace po = boost::program_options;
 
-#define MAX_THREAD 20
+#define MAX_THREAD 64
 int cnt=0;
 int listenfd;
 int cookie_index=1;
@@ -460,7 +460,7 @@ void *timeout_killer(void *arg) {
     time_t now = time(NULL);
     while(!queue_requests.empty()) {
       RequestPtr ptr = queue_requests.front();
-      if (ptr->ehttp->timestamp + 20 <= now) {
+      if (ptr->ehttp->timestamp + 10 <= now) {
         queue_requests.pop();
         if (!ptr.unique()) {
           pthread_mutex_lock(&mutex_requests);
@@ -475,7 +475,7 @@ void *timeout_killer(void *arg) {
 
     while(!queue_pollings.empty()) {
       PollingPtr ptr = queue_pollings.front();
-      if (ptr->ehttp->timestamp + 20 <= now) {
+      if (ptr->ehttp->timestamp + 120 <= now) {
         queue_pollings.pop();
         if (!ptr.unique()) {
           pthread_mutex_lock(&mutex_pollings);
@@ -490,7 +490,7 @@ void *timeout_killer(void *arg) {
 
     while(!queue_requests_key.empty()) {
       RequestPtr ptr = queue_requests_key.front();
-      if (ptr->ehttp->timestamp + 20 <= now) {
+      if (ptr->ehttp->timestamp + 10 <= now) {
         queue_requests_key.pop();
         if (!ptr.unique()) {
           pthread_mutex_lock(&mutex_requests_key);
@@ -505,7 +505,7 @@ void *timeout_killer(void *arg) {
 
     while(!queue_uploads.empty()) {
       UploadPtr ptr = queue_uploads.front();
-      if (ptr->ehttp->timestamp + 20 <= now) {
+      if (ptr->ehttp->timestamp + 10 <= now) {
         queue_uploads.pop();
         log(1) << "UPLOADQUEUE:" << ptr.use_count() << "(" << ptr->ehttp->timestamp <<" / "<<now<<")"<<endl;
         if (!ptr.unique()) {
