@@ -301,17 +301,17 @@ int request_handler(EhttpPtr obj) {
 
   // fetch polling.
   PollingPtr polling;
+  pthread_mutex_lock(&mutex_pollings);
   pthread_mutex_lock(&mutex_requests);
   if (pollings.count(userid)) {
     polling = pollings[userid];
     pollings.erase(userid);
   } else {
-    // pthread_mutex_lock(&mutex_requests);
     requests[userid] = request;
-    // pthread_mutex_unlock(&mutex_requests);
     queue_requests.push(request);
   }
   pthread_mutex_unlock(&mutex_requests);
+  pthread_mutex_unlock(&mutex_pollings);
 
   if (polling.get() != NULL) {
     log(1) << "Request: Execute polling ("
@@ -347,16 +347,16 @@ int polling_handler(EhttpPtr obj) {
 
   // fetch request.
   RequestPtr request;
+  pthread_mutex_lock(&mutex_pollings);
   pthread_mutex_lock(&mutex_requests);
   if (requests.count(userid)) {
     request = requests[userid];
     requests.erase(userid);
   } else {
-    pthread_mutex_lock(&mutex_pollings);
     pollings[userid] = polling;
-    pthread_mutex_unlock(&mutex_pollings);
   }
   pthread_mutex_unlock(&mutex_requests);
+  pthread_mutex_unlock(&mutex_pollings);
 
   if (request.get() != NULL) {
     log(1) << "Request: Execute polling ("
@@ -486,13 +486,12 @@ void *timeout_killer(void *arg) {
       RequestPtr ptr = queue_requests.front();
       if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
         queue_requests.pop();
-        if (!ptr.unique()) {
-          pthread_mutex_lock(&mutex_requests);
-          requests.erase(ptr->userid);
-          pthread_mutex_unlock(&mutex_requests);
-        } else {
+        pthread_mutex_lock(&mutex_requests);
+        if (requests.count(ptr->userid) > 0 && requests[ptr->userid].get() == ptr.get()) {
           ptr->ehttp->timeout();
+          requests.erase(ptr->userid);
         }
+        pthread_mutex_unlock(&mutex_requests);
       } else {
         break;
       }
@@ -503,12 +502,12 @@ void *timeout_killer(void *arg) {
       if (ptr->ehttp->timestamp + timeout_sec_polling <= now) {
         log(1) << "polling queue: " << ptr->userid << endl; 
         queue_pollings.pop();
-        if (pollings.count(ptr->userid) > 0) {
-          pthread_mutex_lock(&mutex_pollings);
+        pthread_mutex_lock(&mutex_pollings);
+        if (pollings.count(ptr->userid) > 0 && pollings[ptr->userid].get() == ptr.get()) {
           ptr->ehttp->timeout();
           pollings.erase(ptr->userid);
-          pthread_mutex_unlock(&mutex_pollings);
         }
+        pthread_mutex_unlock(&mutex_pollings);
       } else {
         break;
       }
