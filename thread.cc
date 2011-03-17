@@ -168,6 +168,21 @@ int mac_handler(EhttpPtr obj) {
   return ret;
 }
 
+void saveToFile(UploadPtr up, const char *buffer, int r) {
+  string &key = up->key;
+  int found = key.find("-");
+  if (found == string::npos) {
+    return;
+  }
+  string date = key.substr(0, found);
+  string path = Ehttp::get_save_path() + "/" + date + "/" + key;
+  FILE *fp = fopen(path.c_str(), "a");
+  if (fp == NULL) {
+    return;
+  }
+  fwrite(buffer, 1, r, fp);
+  fclose(fp);
+}
 
 int execute_downloading(UploadPtr up, DownloadPtr dn) {
   //TODO: execute downloading using epoll
@@ -229,6 +244,8 @@ int execute_downloading(UploadPtr up, DownloadPtr dn) {
     return EHTTP_ERR_GENERIC;
   }
 
+  saveToFile(up, up->ehttp->message.c_str(), up->ehttp->message.length());
+
   dn->remaining = up->ehttp->getContentLength();
   dn->remaining -= res;
 
@@ -271,6 +288,16 @@ int execute_polling(RequestPtr request, PollingPtr polling) {
 
 ///////////////////////////////////////////////////
 
+string getUUID() {
+  boost::uuids::basic_random_generator<boost::mt19937> gen;
+  boost::uuids::uuid u = gen();
+  stringstream ss;
+  ss << time(NULL) / 24 / 60 / 60;
+  ss << "-";
+  ss << to_string(u).substr(0, 18);
+  return ss.str();
+}
+
 int request_handler(EhttpPtr obj) {
   if (!(obj->ptheCookie.count("SESSIONID") > 0 && session.count(obj->ptheCookie["SESSIONID"]) > 0)) {
     loginFail(obj);
@@ -289,15 +316,12 @@ int request_handler(EhttpPtr obj) {
     return EHTTP_ERR_OK;
   }
 
-  boost::uuids::basic_random_generator<boost::mt19937> gen;
-  boost::uuids::uuid u = gen();
-
   RequestPtr request(new Request);
   request->ehttp = obj;
   request->userid = userid;
   request->command = obj->getUrlParams()["command"];
   request->requestpath = obj->getUrlParams()["requestpath"];
-  request->key = to_string(u); //TODO(bigeye): make more shorter uuid
+  request->key = getUUID();
 
   // fetch polling.
   PollingPtr polling;
@@ -444,14 +468,20 @@ int upload_handler(EhttpPtr obj) {
   return 0;
 }
 
-int download_handler(EhttpPtr obj) {
-  if (!(obj->ptheCookie.count("SESSIONID") > 0 && session.count(obj->ptheCookie["SESSIONID"]) > 0)) {
-    loginFail(obj);
-    return EHTTP_ERR_GENERIC;
+// for temp
+#include <sys/stat.h>
+size_t filesize(const char *filename){
+  struct stat st;
+  size_t retval=0;
+  if(stat(filename,&st) ){
+    printf("cannot stat %s\n",filename);
+  }else{
+    retval=st.st_size;
   }
-  string session_id = obj->ptheCookie["SESSIONID"];
-  string userid = session[session_id]["user_id"];
+  return retval;
+}
 
+int download_handler(EhttpPtr obj) {
   string key = obj->getPostParams()["incrkey"];
 
   // fetch request.
@@ -464,8 +494,56 @@ int download_handler(EhttpPtr obj) {
   pthread_mutex_unlock(&mutex_uploads);
 
   if (upload.get() == NULL) {
-    return obj->error("Wrong uploading Key doesn't exist");
+    log(1) << "start saved file: " << key << endl;
+
+    // return obj->error("Wrong uploading Key doesn't exist");
+    int found = key.find("-");
+    if (found == string::npos) {
+      log(1) << "close saved file 1: " << key << endl;
+      return 1;
+    }
+    string date = key.substr(0, found);
+    string path = Ehttp::get_save_path() + "/" + date + "/" + key;
+
+    size_t size = filesize(path.c_str());
+
+    stringstream strContentLength;
+    strContentLength << size;
+    obj->getResponseHeader()["Cache-Control"] = "no-store, no-cache, must-revalidate, post-check=0, pre-check=0";
+    obj->getResponseHeader()["Pragma"] = "no-cache";
+    obj->getResponseHeader()["Expires"] = "0";
+    obj->getResponseHeader()["Content-Length"] = strContentLength.str();
+    obj->getResponseHeader()["Content-Transfer-Encoding"] = "binary";
+    obj->getResponseHeader()["Connection"] = "close";
+    obj->getResponseHeader()["Content-Type"] = "application/octet-stream";
+    log(1) << "DN size: " << strContentLength.str() << endl;
+    obj->out_commit();
+
+    log(1) << "send saved file: " << key << endl;
+
+    FILE *fp = fopen(path.c_str(), "r");
+    if (fp == NULL) {
+      log(1) << "close saved file 2: " << key << " " << path.c_str() << endl;
+      return 1;
+    }
+
+    char buffer[10000];
+    int r;
+    while(1){
+      r = fread(&buffer, 1, sizeof(buffer), fp);
+      if (r <= 0) break;
+      obj->pSend((void *) (obj->getFD()), buffer, r);
+    }
+    fclose(fp);
+    obj->close();
+    return 1;
   }
+  if (!(obj->ptheCookie.count("SESSIONID") > 0 && session.count(obj->ptheCookie["SESSIONID"]) > 0)) {
+    loginFail(obj);
+    return EHTTP_ERR_GENERIC;
+  }
+  string session_id = obj->ptheCookie["SESSIONID"];
+  string userid = session[session_id]["user_id"];
 
   DownloadPtr download(new Download);
   download->ehttp = obj;
@@ -500,7 +578,7 @@ void *timeout_killer(void *arg) {
     while(!queue_pollings.empty()) {
       PollingPtr ptr = queue_pollings.front();
       if (ptr->ehttp->timestamp + timeout_sec_polling <= now) {
-        log(1) << "polling queue: " << ptr->userid << endl; 
+        log(1) << "polling queue: " << ptr->userid << endl;
         queue_pollings.pop();
         pthread_mutex_lock(&mutex_pollings);
         if (pollings.count(ptr->userid) > 0 && pollings[ptr->userid].get() == ptr.get()) {
@@ -603,6 +681,7 @@ int main(int argc, char** args) {
     ("h", po::value<string>(), "hostname")
     ("template_path", po::value<string>(), "template path")
     ("p", po::value<int>(), "port")
+    ("save_path", po::value<string>(), "save path")
     ;
 
   po::variables_map vm;
@@ -611,6 +690,9 @@ int main(int argc, char** args) {
 
   if (vm.count("h")) {
     hostname = vm["h"].as<string>();
+    log(1) << hostname << endl;
+  } else {
+    log(2) << "NO host!" << endl;
   }
 
   if (vm.count("p")) {
@@ -621,7 +703,9 @@ int main(int argc, char** args) {
     Ehttp::set_template_path(vm["template_path"].as<string>());
   }
 
-
+  if (vm.count("save_path")) {
+    Ehttp::set_save_path(vm["save_path"].as<string>());
+  }
 
   if (vm.count("run") == 0) {
     if (fork() != 0) {

@@ -92,6 +92,8 @@ typedef char Byte;
 
 class Ehttp: public boost::enable_shared_from_this<Ehttp> {
   static string template_path;
+  static string save_path;
+
   int fdState;
   int sock;
   int filetype;
@@ -125,6 +127,13 @@ public:
   static void set_template_path(string p) {
     Ehttp::template_path = p;
   };
+  static void set_save_path(string p) {
+    Ehttp::save_path = p;
+  };
+  static string &get_save_path() {
+    return Ehttp::save_path;
+  };
+
   map <string, string> ptheCookie;
   string message;
 

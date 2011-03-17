@@ -43,6 +43,7 @@
 #include <assert.h>
 
 string Ehttp::template_path = "./";
+string Ehttp::save_path = "./";
 
 ssize_t EhttpRecv(void *fd, void *buf, size_t len) {
   int ret = recv((int)fd,buf,len,0);

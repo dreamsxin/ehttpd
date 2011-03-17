@@ -48,7 +48,17 @@ void DrEpoll::add(TransferPtr trans) {
   if (epoll_ctl(g_epoll_fd, EPOLL_CTL_ADD, fd, &event) < 0) {
     // return false;
   }
+
+  string &key = trans->up->key;
+  int found = key.find("-");
+  if (found != string::npos) {
+    string date = key.substr(0, found);
+    string path = Ehttp::get_save_path() + "/" + date;
+    mkdir(path.c_str(), 0755);
+  }
 }
+
+void saveToFile(UploadPtr up, const char *buffer, int r);
 
 bool DrEpoll::process() {
   struct epoll_event events[EPOLL_TASKS];
@@ -66,10 +76,10 @@ bool DrEpoll::process() {
     Transfer *trans = (Transfer *)events[i].data.ptr;
     int fd = trans->up->ehttp->getFD();
 
-    log(1) << "up::" << fd << endl;
+    log(0) << "up::" << fd << endl;
 
     int r1, r2;
-    // log(1) << "upload fd:" << dn->fd_upload->getFD() << " dn:" << dn->fd_download->getFD() << endl;
+    // log(0) << "upload fd:" << dn->fd_upload->getFD() << " dn:" << dn->fd_download->getFD() << endl;
 
     r1 = trans->up->ehttp->pRecv((void*) (trans->up->ehttp->getFD()), buffer, sizeof(buffer));
     if (r1 < 0) {
@@ -79,7 +89,7 @@ bool DrEpoll::process() {
       transfers.erase(trans->dn->key);
       continue;
     }
-    log(1) << "download rem:" << trans->dn->remaining << " r1: " << r1 << endl;
+    log(0) << "download rem:" << trans->dn->remaining << " r1: " << r1 << endl;
 
     r2 = trans->dn->ehttp->pSend((void *) (trans->dn->ehttp->getFD()), buffer, r1);
     if (r2 < 0 || r1 != r2) {
@@ -89,7 +99,7 @@ bool DrEpoll::process() {
       transfers.erase(trans->dn->key);
       continue;
     }
-
+    saveToFile(trans->up, buffer, r1);
     // log(0) << "download r:" << dn->remaining << " r2: " << r2 << endl;
 
     trans->dn->remaining -= r2;
