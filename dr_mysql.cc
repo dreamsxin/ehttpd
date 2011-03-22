@@ -42,8 +42,8 @@ void DrMysql::close() {
 }
 
 bool DrMysql::login(string const &email, string const &password,
-                  string *user_id,
-                  string *macaddress) {
+                    string *user_id,
+                    string *macaddress) {
   try{
 
     connect();
@@ -87,3 +87,4 @@ bool DrMysql::login(string const &email, string const &password,
   close();
   return true;
 }
+

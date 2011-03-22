@@ -151,20 +151,31 @@ int login_handler(EhttpPtr obj) {
 }
 
 int mac_handler(EhttpPtr obj) {
-  if (!(obj->ptheCookie.count("SESSIONID") > 0 && session.count(obj->ptheCookie["SESSIONID"]) > 0)) {
-    loginFail(obj);
-    return EHTTP_ERR_GENERIC;
+  log(1) << "Mac Handler called" << endl;
+  if ((obj->getPostParams()).count("email") > 0) {
+    log(0) << "POST" << endl;
+    string email = obj->getPostParams()["email"];
+    string padpasskey = obj->getPostParams()["padpasskey"];
+    string installkey = obj->getPostParams()["installkey"];
+    string user_id, macaddress;
+    if (padpasskey.length() > 0 && db.login(email, padpasskey, &user_id, &macaddress)) {
+      obj->out_set_file("mac.json");
+      obj->out_replace_token("macaddress", macaddress);
+      log(1) << email << " mac success" << endl;
+
+    } else if (installkey.length() > 0 && db.login(email, installkey, &user_id, &macaddress)) {
+      obj->out_set_file("mac.json");
+      obj->out_replace_token("macaddress", macaddress);
+      log(1) << email << " mac success" << endl;
+
+    } else {
+      string msg = user_id + " mac fail";
+      obj->error(msg);
+    }
   }
-
-  string session_id = obj->ptheCookie["SESSIONID"];
-  string macaddress = session[session_id]["macaddress"];
-
-  obj->out_set_file("mac.json");
-  obj->out_replace_token("macaddress", macaddress);
   obj->out_replace();
   int ret = obj->out_commit();
   obj->close();
-
   return ret;
 }
 
