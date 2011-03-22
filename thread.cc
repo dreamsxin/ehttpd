@@ -41,6 +41,12 @@ int PORT = 8000;
 int timeout_sec_default = 10;
 int timeout_sec_polling = 15;
 
+long long request_call_count = 0;
+long long polling_call_count = 0;
+long long upload_call_count = 0;
+long long download_call_count = 0;
+long long upload_file_size = 0;
+
 typedef struct {
   pthread_t tid;
   deque<int> *conn_pool;
@@ -96,6 +102,22 @@ void loginFail (EhttpPtr obj) {
 int handleDefault(EhttpPtr obj) {
   obj->out_set_file("helloworld_template.html");
   obj->out_replace_token("MESSAGE", "Hello World");
+  obj->out_replace();
+  int ret = obj->out_commit();
+  obj->close();
+  return ret;
+}
+
+int status_handler (EhttpPtr obj) {
+  obj->out_set_file("stringtemplate.json");
+  stringstream ss;
+  ss  << "requestCallCount:" << request_call_count << " ";
+  ss << "pollingCallCount:" << polling_call_count << " ";
+  ss << "downloadCallCount:" << download_call_count << " ";
+  ss << "uploadCallCount:" << upload_call_count << " ";
+  ss << "uploadFileSize:" << upload_file_size << endl;
+  obj->getResponseHeader()["Content-Type"] = "text/plain";
+  obj->out_replace_token("string",ss.str());
   obj->out_replace();
   int ret = obj->out_commit();
   obj->close();
@@ -231,8 +253,9 @@ int execute_downloading(UploadPtr up, DownloadPtr dn) {
   dn->ehttp->getResponseHeader()["Expires"] = "0";
   dn->ehttp->getResponseHeader()["Content-Disposition"] = "attachment; filename=" + filename;
   dn->ehttp->getResponseHeader()["Content-Length"] = strContentLength.str();
-  dn->ehttp->getResponseHeader()["Content-Transfer-Encoding"] = "binary";
+  dn->ehttp->getResponseHeader()["Content-Transfer-Encoding"]  = "binary";
   dn->ehttp->getResponseHeader()["Connection"] = "close";
+  upload_file_size += up->ehttp->getContentLength();
 
   found = filename.rfind(".");
   if (found == string::npos || mimetype.count(filename.substr(found+1)) == 0) {
@@ -310,6 +333,7 @@ string getUUID() {
 }
 
 int request_handler(EhttpPtr obj) {
+  ++request_call_count;
   if (!(obj->ptheCookie.count("SESSIONID") > 0 && session.count(obj->ptheCookie["SESSIONID"]) > 0)) {
     loginFail(obj);
     return EHTTP_ERR_GENERIC;
@@ -369,6 +393,7 @@ int request_handler(EhttpPtr obj) {
 
 
 int polling_handler(EhttpPtr obj) {
+  ++polling_call_count;
   if (!(obj->ptheCookie.count("SESSIONID") > 0 && session.count(obj->ptheCookie["SESSIONID"]) > 0)) {
     loginFail(obj);
     return EHTTP_ERR_GENERIC;
@@ -411,6 +436,7 @@ int polling_handler(EhttpPtr obj) {
 }
 
 int upload_handler(EhttpPtr obj) {
+  ++upload_call_count;
   if (!(obj->ptheCookie.count("SESSIONID") > 0 && session.count(obj->ptheCookie["SESSIONID"]) > 0)) {
     loginFail(obj);
     return EHTTP_ERR_GENERIC;
@@ -493,6 +519,7 @@ size_t filesize(const char *filename){
 }
 
 int download_handler(EhttpPtr obj) {
+  ++download_call_count;
   string key = obj->getPostParams()["incrkey"];
 
   // fetch request.
@@ -665,6 +692,7 @@ void *main_thread(void *arg) {
     http->add_handler("/login", login_handler);
     http->add_handler("/download", download_handler);
     http->add_handler("/mac", mac_handler);
+    http->add_handler("/status", status_handler);
     http->add_handler(NULL, handleDefault);
 
     http->parse_request(socket);
