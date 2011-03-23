@@ -1,2 +1,16 @@
-{"result":"success", "messages":"success", "macaddress":"##macaddress##", "jsondata" :  { "filelist" : ["hwp","doc","docx","xls","xlsx","ppt","pptx","pdf","rtf","gul","gif","jpg","png","mp3","wav","txt","key","dwg"],
-"requesturl" : {"command": "http://##hostname##/request", "polling": "http://##hostname##/polling", "upload": "http://##hostname##/upload", "download": "http://##hostname##/download", "mac": "http://##hostname##/mac"} } }
+{"result":"success",
+"messages":"success",
+"macaddress":"##macaddress##",
+"jsondata" :  {
+  "filelist" : ["hwp","doc","docx","xls","xlsx","ppt","pptx","pdf","rtf","gul","gif","jpg","png","mp3","wav","txt","key","dwg"],
+  "requesturl" : {
+    "command": "http://##hostname##/request",
+    "polling": "http://##hostname##/polling",
+    "upload": "http://##hostname##/upload",
+    "download": "http://##hostname##/download",
+    "mac": "http://##hostname##/mac"},
+  "interval" : {
+    "mac": 180000,
+    "error": 60000,
+    "idle": 7000,
+    "polling": 1000}}}
