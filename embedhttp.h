@@ -75,8 +75,8 @@ enum{
   EHTTP_REQUEST_GET, EHTTP_REQUEST_POST, EHTTP_REQUEST_PUT, EHTTP_LENGTH_REQUIRED
 };
 
-ssize_t ehttpRecv(void *ctx, void *buf, size_t len);
-ssize_t ehttpSend(void *ctx, const void *buf, size_t len);
+ssize_t ehttpRecv(int ctx, void *buf, size_t len);
+ssize_t ehttpSend(int ctx, const void *buf, size_t len);
 
 
 #define INPUT_BUFFER_SIZE 10240
@@ -145,8 +145,8 @@ public:
   int addslash(string *str);
   int parse_cookie(string &cookie_string);
 
-  ssize_t (*pRecv)(void *ctx, void *buf, size_t len);
-  ssize_t (*pSend)(void *ctx, const void *buf, size_t len);
+  ssize_t (*pRecv)(int ctx, void *buf, size_t len);
+  ssize_t (*pSend)(int ctx, const void *buf, size_t len);
 
   /****************************************************************
    Constructor: Ehttp
@@ -780,8 +780,8 @@ public:
    len-  size of the buffer
    cookie-  cookie passed in the parse_request function. For your own use.
    */
-  void setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len) );
-  void setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len) );
+  void setSendFunc( ssize_t (*pS)(int fd, const void *buf, size_t len) );
+  void setRecvFunc( ssize_t (*pR)(int fd, void *buf, size_t len) );
 
   void close();
   int isClose();

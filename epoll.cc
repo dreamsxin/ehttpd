@@ -50,7 +50,7 @@ void DrEpoll::add(TransferPtr trans) {
   }
 
   string &key = trans->up->key;
-  int found = key.find("-");
+  size_t found = key.find("-");
   if (found != string::npos) {
     string date = key.substr(0, found);
     string path = Ehttp::get_save_path() + "/" + date;
@@ -81,7 +81,7 @@ bool DrEpoll::process() {
     int r1, r2;
     // log(0) << "upload fd:" << dn->fd_upload->getFD() << " dn:" << dn->fd_download->getFD() << endl;
 
-    r1 = trans->up->ehttp->pRecv((void*) (trans->up->ehttp->getFD()), buffer, sizeof(buffer));
+    r1 = trans->up->ehttp->pRecv(trans->up->ehttp->getFD(), buffer, sizeof(buffer));
     if (r1 < 0) {
       log(1) << "close r1 rem:" << trans->dn->remaining << " r1: " << r1 << endl;
       epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, &(events[i]));
@@ -91,7 +91,7 @@ bool DrEpoll::process() {
     }
     log(0) << "download rem:" << trans->dn->remaining << " r1: " << r1 << endl;
 
-    r2 = trans->dn->ehttp->pSend((void *) (trans->dn->ehttp->getFD()), buffer, r1);
+    r2 = trans->dn->ehttp->pSend(trans->dn->ehttp->getFD(), buffer, r1);
     if (r2 < 0 || r1 != r2) {
       log(1) << "close r2 rem:" << trans->dn->remaining << " r2: " << r2 << endl;
       epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, &(events[i]));

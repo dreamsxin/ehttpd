@@ -203,7 +203,7 @@ int mac_handler(EhttpPtr obj) {
 
 void saveToFile(UploadPtr up, const char *buffer, int r) {
   string &key = up->key;
-  int found = key.find("-");
+  size_t found = key.find("-");
   if (found == string::npos) {
     return;
   }
@@ -242,7 +242,7 @@ int execute_downloading(UploadPtr up, DownloadPtr dn) {
 
   string filename = dn->requestpath;
   size_t found = filename.rfind("\\");
-  if (found != (int)string::npos) {
+  if (found != string::npos) {
     filename = filename.substr(found+1);
   }
 
@@ -265,7 +265,7 @@ int execute_downloading(UploadPtr up, DownloadPtr dn) {
   }
   dn->ehttp->out_commit();
 
-  int res = dn->ehttp->pSend((void *) (dn->ehttp->getFD()),
+  int res = dn->ehttp->pSend(dn->ehttp->getFD(),
               up->ehttp->message.c_str(),
               up->ehttp->message.length());
 
@@ -570,7 +570,7 @@ int download_handler(EhttpPtr obj) {
     while(1){
       r = fread(&buffer, 1, sizeof(buffer), fp);
       if (r <= 0) break;
-      obj->pSend((void *) (obj->getFD()), buffer, r);
+      obj->pSend(obj->getFD(), buffer, r);
     }
     fclose(fp);
     obj->close();

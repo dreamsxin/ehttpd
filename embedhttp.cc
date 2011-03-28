@@ -45,8 +45,8 @@
 string Ehttp::template_path = "./";
 string Ehttp::save_path = "./";
 
-ssize_t EhttpRecv(void *fd, void *buf, size_t len) {
-  int ret = recv((int)fd,buf,len,0);
+ssize_t EhttpRecv(int fd, void *buf, size_t len) {
+  int ret = recv(fd,buf,len,0);
   if (ret == -1) {
     int nError = errno;
     log(0) << "RECV ERROR!! CODE = " <<  nError << endl;
@@ -54,8 +54,8 @@ ssize_t EhttpRecv(void *fd, void *buf, size_t len) {
   return ret;
 }
 
-ssize_t EhttpSend(void *fd, const void *buf, size_t len) {
-  return send((int)fd,buf,len,0);
+ssize_t EhttpSend(int fd, const void *buf, size_t len) {
+  return send(fd,buf,len,0);
 }
 
 int Ehttp::getRequestType(void) {
@@ -214,7 +214,7 @@ int Ehttp::out_commit_binary(void) {
         int remain = r;
         int total = remain;
         while(remain) {
-          int w = pSend((void *)sock, buffer + (total - remain), remain);
+          int w = pSend(sock, buffer + (total - remain), remain);
           log(0) << w << endl;
           if(w < 0 || fdState == 1) {
             err = w;
@@ -265,7 +265,7 @@ int Ehttp::out_commit(int header) {
   int remain = outbuffer.length();
   int total = remain;
   while (remain > 0) {
-    w=pSend((void *)sock, outbuffer.c_str() + (total - remain), remain);
+    w=pSend(sock, outbuffer.c_str() + (total - remain), remain);
     log(0) << w << endl;
     if(w < 0 || fdState == 1) {
       err = w;
@@ -305,7 +305,7 @@ int Ehttp::read_header(string *header) {
   Byte buffer[INPUT_BUFFER_SIZE];
 
   while((offset = header->find("\r\n\r\n")) == string::npos) {
-    int r = pRecv((void*)sock, buffer, INPUT_BUFFER_SIZE - 1);
+    int r = pRecv(sock, buffer, INPUT_BUFFER_SIZE - 1);
 
     log(0) << "read_header("<<sock<<") r:" << r << "/fdState : " << fdState << endl;
 
@@ -594,7 +594,7 @@ int Ehttp:: parse_message() {
 
     Byte buffer[INPUT_BUFFER_SIZE];
     while(contentlength > message.length()) {
-      int r = pRecv((void*)sock, buffer, INPUT_BUFFER_SIZE - 1);
+      int r = pRecv(sock, buffer, INPUT_BUFFER_SIZE - 1);
       if(r <= 0 || fdState == 1) {
         return EHTTP_ERR_GENERIC;
       }
@@ -697,14 +697,14 @@ int Ehttp::parse_request(int fd) {
   return pHandler( shared_from_this() );
 }
 
-void Ehttp::setSendFunc( ssize_t (*pS)(void *fd, const void *buf, size_t len) ) {
+void Ehttp::setSendFunc( ssize_t (*pS)(int fd, const void *buf, size_t len) ) {
   if( pS )
     pSend=pS;
   else
     pSend=EhttpSend;
 }
 
-void Ehttp::setRecvFunc( ssize_t (*pR)(void *fd, void *buf, size_t len) ) {
+void Ehttp::setRecvFunc( ssize_t (*pR)(int fd, void *buf, size_t len) ) {
   if( pR )
     pRecv=pR;
   else
