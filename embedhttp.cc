@@ -299,7 +299,7 @@ void Ehttp::set_prerequest_handler(void (*pHandler)(EhttpPtr obj)) {
 
 int Ehttp::read_header(string *header) {
   *header = "";
-  unsigned int offset = 0;
+  size_t offset;
   log(0) << "read_header..." << endl;
 
   Byte buffer[INPUT_BUFFER_SIZE];
@@ -460,15 +460,15 @@ int Ehttp::parse_header(string &header) {
   case EHTTP_REQUEST_PUT: request_string_type = "PUT"; break;
   default: request_string_type = "DEFAULT";
   }
-  log(1) << "URL: " << filename << " [" << request_string_type << "]"
+  log(2) << "URL: " << filename << " [" << request_string_type << "]"
          << " (" << getFD() << ")" << endl;
 
   // Save the complete URL
   url=filename;
 
   // See if there are params passed on the request
-  int idx=filename.find("?");
-  if (idx > -1) {
+  size_t idx=filename.find("?");
+  if (idx != string::npos) {
     // Yank out filename minus parms which follow
     string remainder=filename.substr(idx+1);
     filename=filename.substr(0,idx);
@@ -664,11 +664,11 @@ int Ehttp::parse_request(int fd) {
 
   // We are HTTP1.0 and need the content len to be valid
   // Opera Broswer
-  log(0) << "FD:" << fd << " if( contentlength==0 && requesttype==EHTTP_REQUEST_POST ) {" << endl;
-  if( contentlength==0 && requesttype==EHTTP_REQUEST_POST ) {
-    log(2) << "Content Length is 0 and requesttype is EHTTP_REQUEST_POST" << endl;
-    return out_commit(EHTTP_LENGTH_REQUIRED);
-  }
+  // log(0) << "FD:" << fd << " if( contentlength==0 && requesttype==EHTTP_REQUEST_POST ) {" << endl;
+  // if( contentlength==0 && requesttype==EHTTP_REQUEST_POST ) {
+  //   log(2) << "Content Length is 0 and requesttype is EHTTP_REQUEST_POST" << endl;
+  //   return out_commit(EHTTP_LENGTH_REQUIRED);
+  // }
 
   log(0) << "FD:" << fd << " out_buffer_clear" << endl;
 
@@ -743,7 +743,7 @@ int Ehttp::error(const string &error_message) {
 
 int Ehttp::timeout() {
   if (!isClose()) {
-    log(2) << "(" << sock << ")" << endl;
+    log(0) << "timeout (" << sock << ")" << endl;
     out_set_file("timeout.json");
     out_replace();
     out_commit();
@@ -753,7 +753,7 @@ int Ehttp::timeout() {
 }
 
 int Ehttp::uploadend() {
-  log(2) << "(" << sock << ")" << endl;
+  log(2) << "upload end (" << sock << ")" << endl;
   out_set_file("request.json");
   out_replace_token("jsondata", "\"\"");
   out_replace();

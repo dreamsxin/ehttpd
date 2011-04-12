@@ -23,7 +23,7 @@ epoll.o : epoll.cc *.h
 log.o : log.cc *.h
 	$(CXX) $(CXXFLAGS) -c -o log.o log.cc
 
-embedhtt.o : embedhppttp.cc *.h
+embedhttp.o : embedhttp.cc *.h
 	$(CXX) $(CXXFLAGS) -c -o embedhttp.o embedhttp.cc
 
 dr_mysql.o : dr_mysql.cc *.h

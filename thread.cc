@@ -30,6 +30,9 @@
 #include <boost/program_options/variables_map.hpp>
 #include <boost/program_options/parsers.hpp>
 
+#define TLOCK(name) pthread_mutex_lock(&(name))
+#define TUNLOCK(name) pthread_mutex_unlock(&(name))
+
 using namespace std;
 namespace po = boost::program_options;
 
@@ -39,7 +42,7 @@ int listenfd;
 int cookie_index=1;
 int PORT = 8000;
 int timeout_sec_default = 10;
-int timeout_sec_polling = 15;
+int timeout_sec_polling = 25;
 
 long long request_call_count = 0;
 long long polling_call_count = 0;
@@ -71,7 +74,14 @@ pthread_mutex_t mutex_uploads = PTHREAD_MUTEX_INITIALIZER;
 
 map <string, map<string, string> > session;
 
+pthread_mutex_t mutex_session = PTHREAD_MUTEX_INITIALIZER;
+
 pthread_mutex_t new_connection_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+pthread_mutex_t mutex_queue_requests = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_queue_pollings = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_queue_requests_key = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_queue_uploads = PTHREAD_MUTEX_INITIALIZER;
 
 DrMysql db;
 
@@ -137,8 +147,10 @@ int login_handler(EhttpPtr obj) {
       boost::uuids::uuid u = gen();
       string sessionid = to_string(u);
       obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid;
+      pthread_mutex_lock(&mutex_session);
       session[sessionid]["user_id"] = user_id;
-      session[sessionid]["macaddress"] = macaddress;;
+      session[sessionid]["macaddress"] = macaddress;
+      pthread_mutex_unlock(&mutex_session);
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
       obj->out_replace_token("hostname", hostname);
@@ -149,15 +161,17 @@ int login_handler(EhttpPtr obj) {
       boost::uuids::uuid u = gen();
       string sessionid = to_string(u);
       obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid;
+      pthread_mutex_lock(&mutex_session);
       session[sessionid]["user_id"] = user_id;
-      session[sessionid]["macaddress"] = macaddress;;
+      session[sessionid]["macaddress"] = macaddress;
+      pthread_mutex_unlock(&mutex_session);
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
       obj->out_replace_token("hostname", hostname);
       log(1) << email << " login success" << endl;
     } else {
       string msg = user_id + " login fail";
-      obj->error(msg);
+      return obj->error(msg);
     }
     //    log(0) << "mac : " << macaddress << endl;
   } else {
@@ -192,7 +206,7 @@ int mac_handler(EhttpPtr obj) {
 
     } else {
       string msg = user_id + " mac fail";
-      obj->error(msg);
+      return obj->error(msg);
     }
   }
   obj->out_replace();
@@ -236,7 +250,7 @@ int execute_downloading(UploadPtr up, DownloadPtr dn) {
   mimetype["png"] = "image/png";
   mimetype["mp3"] = "audio/mpeg";
   mimetype["wav"] = "audio/x-wav";
-  mimetype["txt"] = "text/plain";
+  mimetype["txt"] = "text/plain; charset=euc_kr";
   mimetype["key"] = "application/octet-stream";
   mimetype["dwg"] = "application/dwg";
 
@@ -314,7 +328,9 @@ int execute_polling(RequestPtr request, PollingPtr polling) {
   pthread_mutex_lock(&mutex_requests_key);
   requests_key[request->key] = request;
   pthread_mutex_unlock(&mutex_requests_key);
+  pthread_mutex_lock(&mutex_queue_requests_key);
   queue_requests_key.push(request);
+  pthread_mutex_unlock(&mutex_queue_requests_key);
 
   log(1) << "execute_polling: End and assign request:" << request->ehttp->getFD() << endl;
   return ret;
@@ -340,7 +356,9 @@ int request_handler(EhttpPtr obj) {
   }
 
   string session_id = obj->ptheCookie["SESSIONID"];
+  pthread_mutex_lock(&mutex_session);
   string userid = session[session_id]["user_id"];
+  pthread_mutex_unlock(&mutex_session);
   if (obj->getUrlParams()["command"] == "logout") {
     session.erase(session_id);
     obj->out_set_file("request.json");
@@ -367,7 +385,9 @@ int request_handler(EhttpPtr obj) {
     pollings.erase(userid);
   } else {
     requests[userid] = request;
+    pthread_mutex_lock(&mutex_queue_requests);
     queue_requests.push(request);
+    pthread_mutex_unlock(&mutex_queue_requests);
   }
   pthread_mutex_unlock(&mutex_requests);
   pthread_mutex_unlock(&mutex_pollings);
@@ -399,7 +419,9 @@ int polling_handler(EhttpPtr obj) {
     return EHTTP_ERR_GENERIC;
   }
   string session_id = obj->ptheCookie["SESSIONID"];
+  pthread_mutex_lock(&mutex_session);
   string userid = session[session_id]["user_id"];
+  pthread_mutex_unlock(&mutex_session);
 
   PollingPtr polling(new Polling);
   polling->ehttp = obj;
@@ -430,7 +452,9 @@ int polling_handler(EhttpPtr obj) {
   } else {
     log(1) << "Request: Waiting ("
            << obj->getFD() << ")" << endl;
+    TLOCK(mutex_queue_pollings);
     queue_pollings.push(polling);
+    TUNLOCK(mutex_queue_pollings);
   }
   return 0;
 }
@@ -443,7 +467,9 @@ int upload_handler(EhttpPtr obj) {
   }
 
   string session_id = obj->ptheCookie["SESSIONID"];
+  pthread_mutex_lock(&mutex_session);
   string userid = session[session_id]["user_id"];
+  pthread_mutex_unlock(&mutex_session);
 
   string jsondata = obj->getPostParams()["jsondata"];
   string key = obj->getPostParams()["incrkey"];
@@ -479,7 +505,9 @@ int upload_handler(EhttpPtr obj) {
     pthread_mutex_lock(&mutex_uploads);
     uploads[upload->key] = upload;
     pthread_mutex_unlock(&mutex_uploads);
+    TLOCK(mutex_queue_uploads);
     queue_uploads.push(upload);
+    TUNLOCK(mutex_queue_uploads);
 
     // TODO LOG
 
@@ -535,7 +563,7 @@ int download_handler(EhttpPtr obj) {
     log(1) << "start saved file: " << key << endl;
 
     // return obj->error("Wrong uploading Key doesn't exist");
-    int found = key.find("-");
+    size_t found = key.find("-");
     if (found == string::npos) {
       log(1) << "close saved file 1: " << key << endl;
       return 1;
@@ -581,7 +609,9 @@ int download_handler(EhttpPtr obj) {
     return EHTTP_ERR_GENERIC;
   }
   string session_id = obj->ptheCookie["SESSIONID"];
+  pthread_mutex_lock(&mutex_session);
   string userid = session[session_id]["user_id"];
+  pthread_mutex_unlock(&mutex_session);
 
   DownloadPtr download(new Download);
   download->ehttp = obj;
@@ -598,6 +628,7 @@ void *timeout_killer(void *arg) {
   while(1) {
     sleep(1);
     time_t now = time(NULL);
+    TLOCK(mutex_queue_requests);
     while(!queue_requests.empty()) {
       RequestPtr ptr = queue_requests.front();
       if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
@@ -612,7 +643,10 @@ void *timeout_killer(void *arg) {
         break;
       }
     }
+    TUNLOCK(mutex_queue_requests);
 
+
+    TLOCK(mutex_queue_pollings);
     while(!queue_pollings.empty()) {
       PollingPtr ptr = queue_pollings.front();
       if (ptr->ehttp->timestamp + timeout_sec_polling <= now) {
@@ -628,7 +662,9 @@ void *timeout_killer(void *arg) {
         break;
       }
     }
+    TUNLOCK(mutex_queue_pollings);
 
+    TLOCK(mutex_queue_requests_key);
     while(!queue_requests_key.empty()) {
       RequestPtr ptr = queue_requests_key.front();
       if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
@@ -644,7 +680,9 @@ void *timeout_killer(void *arg) {
         break;
       }
     }
+    TUNLOCK(mutex_queue_requests_key);
 
+    TLOCK(mutex_queue_uploads);
     while(!queue_uploads.empty()) {
       UploadPtr ptr = queue_uploads.front();
       if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
@@ -661,6 +699,7 @@ void *timeout_killer(void *arg) {
         break;
       }
     }
+    TUNLOCK(mutex_queue_uploads);
   }
 }
 void *main_thread(void *arg) {
@@ -767,6 +806,8 @@ int main(int argc, char** args) {
 
   signal(SIGPIPE, SIG_IGN);
 
+  DrMysql::connection_init();
+
   deque<int> conn_pool;
   Thread threads[MAX_THREAD];
 
@@ -803,7 +844,7 @@ int main(int argc, char** args) {
   struct sockaddr_in client_addr;
   socklen_t sin_size = sizeof(struct sockaddr_in);
 
-  log(1) << "DR Server Start! Listen..." << endl;
+  log(2) << "DR Server Start! Listen..." << endl;
   for( ; ; ) {
     if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
       exit(1);
