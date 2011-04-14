@@ -22,6 +22,7 @@
 #include "connection.h"
 #include "download.h"
 #include "dr_mysql.h"
+#include "session.h"
 #include "log.h"
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
@@ -41,8 +42,9 @@ int cnt=0;
 int listenfd;
 int cookie_index=1;
 int PORT = 8000;
-int timeout_sec_default = 10;
-int timeout_sec_polling = 25;
+int timeout_sec_default = 30;
+int timeout_sec_polling = 60;
+int session_expired_time = 3600;
 
 long long request_call_count = 0;
 long long polling_call_count = 0;
@@ -72,7 +74,7 @@ pthread_mutex_t mutex_pollings = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_requests_key = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_uploads = PTHREAD_MUTEX_INITIALIZER;
 
-map <string, map<string, string> > session;
+map <string, Session> session;
 
 pthread_mutex_t mutex_session = PTHREAD_MUTEX_INITIALIZER;
 
@@ -118,6 +120,15 @@ int handleDefault(EhttpPtr obj) {
   return ret;
 }
 
+string get_userid_from_session(EhttpPtr obj) {
+  string session_id = obj->ptheCookie["SESSIONID"];
+  pthread_mutex_lock(&mutex_session);
+  string userid = session[session_id].user_id;
+  session[session_id].timestamp = time(NULL);
+  pthread_mutex_unlock(&mutex_session);
+  return userid;
+}
+
 int status_handler (EhttpPtr obj) {
   obj->out_set_file("stringtemplate.json");
   stringstream ss;
@@ -148,8 +159,9 @@ int login_handler(EhttpPtr obj) {
       string sessionid = to_string(u);
       obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid;
       pthread_mutex_lock(&mutex_session);
-      session[sessionid]["user_id"] = user_id;
-      session[sessionid]["macaddress"] = macaddress;
+      session[sessionid].user_id = user_id;
+      session[sessionid].macaddress = macaddress;
+      session[sessionid].timestamp = time(NULL);
       pthread_mutex_unlock(&mutex_session);
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
@@ -162,8 +174,9 @@ int login_handler(EhttpPtr obj) {
       string sessionid = to_string(u);
       obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid;
       pthread_mutex_lock(&mutex_session);
-      session[sessionid]["user_id"] = user_id;
-      session[sessionid]["macaddress"] = macaddress;
+      session[sessionid].user_id = user_id;
+      session[sessionid].macaddress = macaddress;
+      session[sessionid].timestamp = time(NULL);
       pthread_mutex_unlock(&mutex_session);
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
@@ -356,9 +369,9 @@ int request_handler(EhttpPtr obj) {
   }
 
   string session_id = obj->ptheCookie["SESSIONID"];
-  pthread_mutex_lock(&mutex_session);
-  string userid = session[session_id]["user_id"];
-  pthread_mutex_unlock(&mutex_session);
+  string userid = get_userid_from_session(obj);
+
+  //TODO(bigeye): logout is deprecated.
   if (obj->getUrlParams()["command"] == "logout") {
     session.erase(session_id);
     obj->out_set_file("request.json");
@@ -418,10 +431,7 @@ int polling_handler(EhttpPtr obj) {
     loginFail(obj);
     return EHTTP_ERR_GENERIC;
   }
-  string session_id = obj->ptheCookie["SESSIONID"];
-  pthread_mutex_lock(&mutex_session);
-  string userid = session[session_id]["user_id"];
-  pthread_mutex_unlock(&mutex_session);
+  string userid = get_userid_from_session(obj);
 
   PollingPtr polling(new Polling);
   polling->ehttp = obj;
@@ -466,10 +476,7 @@ int upload_handler(EhttpPtr obj) {
     return EHTTP_ERR_GENERIC;
   }
 
-  string session_id = obj->ptheCookie["SESSIONID"];
-  pthread_mutex_lock(&mutex_session);
-  string userid = session[session_id]["user_id"];
-  pthread_mutex_unlock(&mutex_session);
+  string userid = get_userid_from_session(obj);
 
   string jsondata = obj->getPostParams()["jsondata"];
   string key = obj->getPostParams()["incrkey"];
@@ -581,7 +588,8 @@ int download_handler(EhttpPtr obj) {
     obj->getResponseHeader()["Content-Length"] = strContentLength.str();
     obj->getResponseHeader()["Content-Transfer-Encoding"] = "binary";
     obj->getResponseHeader()["Connection"] = "close";
-    obj->getResponseHeader()["Content-Type"] = "application/octet-stream";
+    obj->getResponseHeader()["Content-Disposition"] = "attachment; filename=download.mp3";
+    obj->getResponseHeader()["Content-Type"] = "audio/mpeg";//application/octet-stream";
     log(1) << "DN size: " << strContentLength.str() << endl;
     obj->out_commit();
 
@@ -608,10 +616,7 @@ int download_handler(EhttpPtr obj) {
     loginFail(obj);
     return EHTTP_ERR_GENERIC;
   }
-  string session_id = obj->ptheCookie["SESSIONID"];
-  pthread_mutex_lock(&mutex_session);
-  string userid = session[session_id]["user_id"];
-  pthread_mutex_unlock(&mutex_session);
+  string userid = get_userid_from_session(obj);
 
   DownloadPtr download(new Download);
   download->ehttp = obj;
@@ -628,8 +633,17 @@ void *timeout_killer(void *arg) {
   while(1) {
     sleep(1);
     time_t now = time(NULL);
+    TLOCK(mutex_session);
+    for (map<string, Session>::iterator it = session.begin(); it != session.end(); ++it) {
+      if ((*it).second.timestamp + session_expired_time <= now) {
+        cout << "Session Expired : " << (*it).first << endl;
+        session.erase((*it).first);
+      }
+    }
+    TUNLOCK(mutex_session);
+    
     TLOCK(mutex_queue_requests);
-    while(!queue_requests.empty()) {
+    while (!queue_requests.empty()) {
       RequestPtr ptr = queue_requests.front();
       if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
         queue_requests.pop();
@@ -796,7 +810,6 @@ int main(int argc, char** args) {
   }
 
   fstream pidfile;
-  //TODO(donghyun): option
   pidfile.open("/var/drserver/drserver.pid", fstream::out);
   pidfile << getpid() << endl;
   pidfile.close();
