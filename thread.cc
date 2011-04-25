@@ -380,7 +380,13 @@ int request_handler(EhttpPtr obj) {
     obj->out_commit();
     obj->close();
     return EHTTP_ERR_OK;
-  }
+  } else if (obj->getUrlParams()["command"] == "sendemail") {
+    obj->out_set_file("helloworld_template.html");
+    obj->out_replace();
+    int ret = obj->out_commit();
+    obj->close();
+    return ret;
+  } 
 
   RequestPtr request(new Request);
   request->ehttp = obj;
@@ -497,7 +503,7 @@ int upload_handler(EhttpPtr obj) {
 
   if (command == "getfile") {
     request->ehttp->out_set_file("request.json");
-    request->ehttp->out_replace_token("jsondata","{\"filedownurl\":\"http://" + hostname + "/download?incrkey=" + key + "\"}");
+    request->ehttp->out_replace_token("jsondata","{\"filedownurl\":\"http://" + hostname + "/download?incrkey=" + key + "&code=0\"}");
     request->ehttp->out_replace();
     request->ehttp->out_commit();
     request->ehttp->close();
@@ -588,8 +594,8 @@ int download_handler(EhttpPtr obj) {
     obj->getResponseHeader()["Content-Length"] = strContentLength.str();
     obj->getResponseHeader()["Content-Transfer-Encoding"] = "binary";
     obj->getResponseHeader()["Connection"] = "close";
-    obj->getResponseHeader()["Content-Disposition"] = "attachment; filename=download.mp3";
-    obj->getResponseHeader()["Content-Type"] = "audio/mpeg";//application/octet-stream";
+//    obj->getResponseHeader()["Content-Disposition"] = "attachment; filename=download.mp3";
+    obj->getResponseHeader()["Content-Type"] = "application/octet-stream";
     log(1) << "DN size: " << strContentLength.str() << endl;
     obj->out_commit();
 
@@ -629,19 +635,29 @@ int download_handler(EhttpPtr obj) {
   return 1;
 }
 
+void *session_killer(void *arg) {
+  while(1) {
+    sleep(600);
+    time_t now = time(NULL);
+    TLOCK(mutex_session);
+    for (map<string, Session>::iterator it = session.begin(); it != session.end(); ) {
+      if ((*it).second.timestamp + session_expired_time <= now) {
+        cout << "Session Expired : " << (*it).first << endl;
+	map<string, Session>::iterator temp_iterator = it;
+	++it;
+        session.erase((*temp_iterator).first);
+      } else {
+	++it;
+      }
+    }
+    TUNLOCK(mutex_session);
+  }
+}
+
 void *timeout_killer(void *arg) {
   while(1) {
     sleep(1);
     time_t now = time(NULL);
-    TLOCK(mutex_session);
-    for (map<string, Session>::iterator it = session.begin(); it != session.end(); ++it) {
-      if ((*it).second.timestamp + session_expired_time <= now) {
-        cout << "Session Expired : " << (*it).first << endl;
-        session.erase((*it).first);
-      }
-    }
-    TUNLOCK(mutex_session);
-    
     TLOCK(mutex_queue_requests);
     while (!queue_requests.empty()) {
       RequestPtr ptr = queue_requests.front();
@@ -832,6 +848,9 @@ int main(int argc, char** args) {
 
   pthread_t tid;
   pthread_create(&tid, NULL, &timeout_killer, NULL);
+
+  pthread_t tid_session;
+  pthread_create(&tid_session, NULL, &session_killer, NULL);
 
   DrEpoll::get_mutable_instance().init();
 
