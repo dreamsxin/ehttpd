@@ -20,7 +20,6 @@
 #include "epoll.h"
 #include "embedhttp.h"
 #include "connection.h"
-#include "download.h"
 #include "dr_mysql.h"
 #include "session.h"
 #include "log.h"
@@ -122,10 +121,10 @@ int handleDefault(EhttpPtr obj) {
 
 string get_userid_from_session(EhttpPtr obj) {
   string session_id = obj->ptheCookie["SESSIONID"];
-  pthread_mutex_lock(&mutex_session);
+  TLOCK(mutex_session);
   string userid = session[session_id].user_id;
   session[session_id].timestamp = time(NULL);
-  pthread_mutex_unlock(&mutex_session);
+  TUNLOCK(mutex_session);
   return userid;
 }
 
@@ -158,11 +157,11 @@ int login_handler(EhttpPtr obj) {
       boost::uuids::uuid u = gen();
       string sessionid = to_string(u);
       obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid;
-      pthread_mutex_lock(&mutex_session);
+      TLOCK(mutex_session);
       session[sessionid].user_id = user_id;
       session[sessionid].macaddress = macaddress;
       session[sessionid].timestamp = time(NULL);
-      pthread_mutex_unlock(&mutex_session);
+      TUNLOCK(mutex_session);
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
       obj->out_replace_token("hostname", hostname);
@@ -173,11 +172,11 @@ int login_handler(EhttpPtr obj) {
       boost::uuids::uuid u = gen();
       string sessionid = to_string(u);
       obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid;
-      pthread_mutex_lock(&mutex_session);
+      TLOCK(mutex_session);
       session[sessionid].user_id = user_id;
       session[sessionid].macaddress = macaddress;
       session[sessionid].timestamp = time(NULL);
-      pthread_mutex_unlock(&mutex_session);
+      TUNLOCK(mutex_session);
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
       obj->out_replace_token("hostname", hostname);
@@ -338,12 +337,12 @@ int execute_polling(RequestPtr request, PollingPtr polling) {
     return ret;
   }
 
-  pthread_mutex_lock(&mutex_requests_key);
+  TLOCK(mutex_requests_key);
   requests_key[request->key] = request;
-  pthread_mutex_unlock(&mutex_requests_key);
-  pthread_mutex_lock(&mutex_queue_requests_key);
+  TUNLOCK(mutex_requests_key);
+  TLOCK(mutex_queue_requests_key);
   queue_requests_key.push(request);
-  pthread_mutex_unlock(&mutex_queue_requests_key);
+  TUNLOCK(mutex_queue_requests_key);
 
   log(1) << "execute_polling: End and assign request:" << request->ehttp->getFD() << endl;
   return ret;
@@ -397,19 +396,19 @@ int request_handler(EhttpPtr obj) {
 
   // fetch polling.
   PollingPtr polling;
-  pthread_mutex_lock(&mutex_pollings);
-  pthread_mutex_lock(&mutex_requests);
+  TLOCK(mutex_pollings);
+  TLOCK(mutex_requests);
   if (pollings.count(userid)) {
     polling = pollings[userid];
     pollings.erase(userid);
   } else {
     requests[userid] = request;
-    pthread_mutex_lock(&mutex_queue_requests);
+    TLOCK(mutex_queue_requests);
     queue_requests.push(request);
-    pthread_mutex_unlock(&mutex_queue_requests);
+    TUNLOCK(mutex_queue_requests);
   }
-  pthread_mutex_unlock(&mutex_requests);
-  pthread_mutex_unlock(&mutex_pollings);
+  TUNLOCK(mutex_requests);
+  TUNLOCK(mutex_pollings);
 
   if (polling.get() != NULL) {
     log(1) << "Request: Execute polling ("
@@ -445,16 +444,16 @@ int polling_handler(EhttpPtr obj) {
 
   // fetch request.
   RequestPtr request;
-  pthread_mutex_lock(&mutex_pollings);
-  pthread_mutex_lock(&mutex_requests);
+  TLOCK(mutex_pollings);
+  TLOCK(mutex_requests);
   if (requests.count(userid)) {
     request = requests[userid];
     requests.erase(userid);
   } else {
     pollings[userid] = polling;
   }
-  pthread_mutex_unlock(&mutex_requests);
-  pthread_mutex_unlock(&mutex_pollings);
+  TUNLOCK(mutex_requests);
+  TUNLOCK(mutex_pollings);
 
   if (request.get() != NULL) {
     log(1) << "Request: Execute polling ("
@@ -490,12 +489,12 @@ int upload_handler(EhttpPtr obj) {
 
   // fetch request.
   RequestPtr request;
-  pthread_mutex_lock(&mutex_requests_key);
+  TLOCK(mutex_requests_key);
   if (requests_key.count(key)) {
     request = requests_key[key];
     requests_key.erase(key);
   }
-  pthread_mutex_unlock(&mutex_requests_key);
+  TUNLOCK(mutex_requests_key);
 
   if (request.get() == NULL) {
     return obj->error("Wrong uploading Key doesn't exist");
@@ -515,9 +514,9 @@ int upload_handler(EhttpPtr obj) {
     upload->command = request->command;
     upload->requestpath = request->requestpath;
 
-    pthread_mutex_lock(&mutex_uploads);
+    TLOCK(mutex_uploads);
     uploads[upload->key] = upload;
-    pthread_mutex_unlock(&mutex_uploads);
+    TUNLOCK(mutex_uploads);
     TLOCK(mutex_queue_uploads);
     queue_uploads.push(upload);
     TUNLOCK(mutex_queue_uploads);
@@ -565,12 +564,12 @@ int download_handler(EhttpPtr obj) {
 
   // fetch request.
   UploadPtr upload;
-  pthread_mutex_lock(&mutex_uploads);
+  TLOCK(mutex_uploads);
   if (uploads.count(key)) {
     upload = uploads[key];
     uploads.erase(key);
   }
-  pthread_mutex_unlock(&mutex_uploads);
+  TUNLOCK(mutex_uploads);
 
   if (upload.get() == NULL) {
     log(1) << "start saved file: " << key << endl;
@@ -663,12 +662,12 @@ void *timeout_killer(void *arg) {
       RequestPtr ptr = queue_requests.front();
       if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
         queue_requests.pop();
-        pthread_mutex_lock(&mutex_requests);
+        TLOCK(mutex_requests);
         if (requests.count(ptr->userid) > 0 && requests[ptr->userid].get() == ptr.get()) {
           ptr->ehttp->timeout();
           requests.erase(ptr->userid);
         }
-        pthread_mutex_unlock(&mutex_requests);
+        TUNLOCK(mutex_requests);
       } else {
         break;
       }
@@ -682,12 +681,12 @@ void *timeout_killer(void *arg) {
       if (ptr->ehttp->timestamp + timeout_sec_polling <= now) {
         log(1) << "polling queue: " << ptr->userid << endl;
         queue_pollings.pop();
-        pthread_mutex_lock(&mutex_pollings);
+        TLOCK(mutex_pollings);
         if (pollings.count(ptr->userid) > 0 && pollings[ptr->userid].get() == ptr.get()) {
           ptr->ehttp->timeout();
           pollings.erase(ptr->userid);
         }
-        pthread_mutex_unlock(&mutex_pollings);
+        TUNLOCK(mutex_pollings);
       } else {
         break;
       }
@@ -700,9 +699,9 @@ void *timeout_killer(void *arg) {
       if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
         queue_requests_key.pop();
         if (!ptr.unique()) {
-          pthread_mutex_lock(&mutex_requests_key);
+          TLOCK(mutex_requests_key);
           requests_key.erase(ptr->key);
-          pthread_mutex_unlock(&mutex_requests_key);
+          TUNLOCK(mutex_requests_key);
         } else {
           ptr->ehttp->timeout();
         }
@@ -719,9 +718,9 @@ void *timeout_killer(void *arg) {
         queue_uploads.pop();
         log(1) << "UPLOADQUEUE:" << ptr.use_count() << "(" << ptr->ehttp->timestamp <<" / "<<now<<")"<<endl;
         if (!ptr.unique()) {
-          pthread_mutex_lock(&mutex_uploads);
+          TLOCK(mutex_uploads);
           uploads.erase(ptr->key);
-          pthread_mutex_unlock(&mutex_uploads);
+          TUNLOCK(mutex_uploads);
         } else {
           ptr->ehttp->timeout();
         }
@@ -741,14 +740,14 @@ void *main_thread(void *arg) {
     log(0) << "FETCH START! THREAD:" << thread->tid << endl;
     for(;;) {
       sleep(1);
-      pthread_mutex_lock(&new_connection_mutex);
+      TLOCK(new_connection_mutex);
       if (!thread->conn_pool->empty()) {
         socket = thread->conn_pool->front();
         thread->conn_pool->pop_front();
-        pthread_mutex_unlock(&new_connection_mutex);
+        TUNLOCK(new_connection_mutex);
         break;
       }
-      pthread_mutex_unlock(&new_connection_mutex);
+      TUNLOCK(new_connection_mutex);
     }
     log(0) << "FETCH END! THREAD:" << thread->tid << endl;
 
@@ -773,8 +772,8 @@ void *main_thread(void *arg) {
     //   delete http;
     // }
 
-    // pthread_mutex_lock(&new_connection_mutex);
-    // pthread_mutex_unlock(&new_connection_mutex);
+    // TLOCK(new_connection_mutex);
+    // TUNLOCK(new_connection_mutex);
   }
 }
 
@@ -883,10 +882,10 @@ int main(int argc, char** args) {
     }
     //    nonblock(clifd);
     // nonblock(clifd);
-    pthread_mutex_lock(&new_connection_mutex);
+    TLOCK(new_connection_mutex);
     log(1) << "Accepted... " << clifd << "  / Queue size : " << conn_pool.size() << " / Thread: " << MAX_THREAD << endl;
     conn_pool.push_back(clifd);
-    pthread_mutex_unlock(&new_connection_mutex);
+    TUNLOCK(new_connection_mutex);
   }
 
   return 0;

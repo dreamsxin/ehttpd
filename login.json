@@ -10,7 +10,7 @@
     "download": "http://##hostname##/download",
     "mac": "http://##hostname##/mac"},
   "interval" : {
-    "mac": 500000,
+    "mac": 20000,
     "error": 10000,
     "idle": 3000,
     "polling": 300}}}
