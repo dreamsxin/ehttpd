@@ -60,18 +60,15 @@ map <string, RequestPtr > requests;  // userid as key
 map <string, PollingPtr > pollings;  // userid as key
 
 map <string, RequestPtr > requests_key;  // inckey as key
-map <string, UploadPtr > uploads;  // inckey as key
 
 queue <RequestPtr> queue_requests;
 queue <PollingPtr> queue_pollings;
 queue <RequestPtr> queue_requests_key;
-queue <UploadPtr> queue_uploads;
 
 pthread_mutex_t mutex_requests = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_pollings = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_mutex_t mutex_requests_key = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_uploads = PTHREAD_MUTEX_INITIALIZER;
 
 map <string, Session> session;
 
@@ -82,7 +79,6 @@ pthread_mutex_t new_connection_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_queue_requests = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_queue_pollings = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_queue_requests_key = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_queue_uploads = PTHREAD_MUTEX_INITIALIZER;
 
 DrMysql db;
 
@@ -340,6 +336,7 @@ int execute_polling(RequestPtr request, PollingPtr polling) {
   TLOCK(mutex_requests_key);
   requests_key[request->key] = request;
   TUNLOCK(mutex_requests_key);
+
   TLOCK(mutex_queue_requests_key);
   queue_requests_key.push(request);
   TUNLOCK(mutex_queue_requests_key);
@@ -501,12 +498,6 @@ int upload_handler(EhttpPtr obj) {
   }
 
   if (command == "getfile") {
-    request->ehttp->out_set_file("request.json");
-    request->ehttp->out_replace_token("jsondata","{\"filedownurl\":\"http://" + hostname + "/download?incrkey=" + key + "&code=0\"}");
-    request->ehttp->out_replace();
-    request->ehttp->out_commit();
-    request->ehttp->close();
-
     UploadPtr upload(new Upload);
     upload->ehttp = obj;
     upload->userid = request->userid;
@@ -514,15 +505,14 @@ int upload_handler(EhttpPtr obj) {
     upload->command = request->command;
     upload->requestpath = request->requestpath;
 
-    TLOCK(mutex_uploads);
-    uploads[upload->key] = upload;
-    TUNLOCK(mutex_uploads);
-    TLOCK(mutex_queue_uploads);
-    queue_uploads.push(upload);
-    TUNLOCK(mutex_queue_uploads);
+    DownloadPtr download(new Download);
+    download->ehttp = request->ehttp;
+    download->userid = request->userid;
+    download->key = request->key;
+    download->command = request->command;
+    download->requestpath = request->requestpath;
 
-    // TODO LOG
-
+    execute_downloading(upload, download);
   } else {
     log(0) << "jsondata : " << jsondata << endl;
     request->ehttp->out_set_file("request.json");
@@ -538,8 +528,6 @@ int upload_handler(EhttpPtr obj) {
     obj->out_replace();
     obj->out_commit();
     obj->close();
-
-    // TODO LOG
   }
 
   return 0;
@@ -556,82 +544,6 @@ size_t filesize(const char *filename){
     retval=st.st_size;
   }
   return retval;
-}
-
-int download_handler(EhttpPtr obj) {
-  ++download_call_count;
-  string key = obj->getPostParams()["incrkey"];
-
-  // fetch request.
-  UploadPtr upload;
-  TLOCK(mutex_uploads);
-  if (uploads.count(key)) {
-    upload = uploads[key];
-    uploads.erase(key);
-  }
-  TUNLOCK(mutex_uploads);
-
-  if (upload.get() == NULL) {
-    log(1) << "start saved file: " << key << endl;
-
-    // return obj->error("Wrong uploading Key doesn't exist");
-    size_t found = key.find("-");
-    if (found == string::npos) {
-      log(1) << "close saved file 1: " << key << endl;
-      return 1;
-    }
-    string date = key.substr(0, found);
-    string path = Ehttp::get_save_path() + "/" + date + "/" + key;
-
-    size_t size = filesize(path.c_str());
-
-    stringstream strContentLength;
-    strContentLength << size;
-    obj->getResponseHeader()["Cache-Control"] = "no-store, no-cache, must-revalidate, post-check=0, pre-check=0";
-    obj->getResponseHeader()["Pragma"] = "no-cache";
-    obj->getResponseHeader()["Expires"] = "0";
-    obj->getResponseHeader()["Content-Length"] = strContentLength.str();
-    obj->getResponseHeader()["Content-Transfer-Encoding"] = "binary";
-    obj->getResponseHeader()["Connection"] = "close";
-//    obj->getResponseHeader()["Content-Disposition"] = "attachment; filename=download.mp3";
-    obj->getResponseHeader()["Content-Type"] = "application/octet-stream";
-    log(1) << "DN size: " << strContentLength.str() << endl;
-    obj->out_commit();
-
-    log(1) << "send saved file: " << key << endl;
-
-    FILE *fp = fopen(path.c_str(), "r");
-    if (fp == NULL) {
-      log(1) << "close saved file 2: " << key << " " << path.c_str() << endl;
-      return 1;
-    }
-
-    char buffer[10000];
-    int r;
-    while(1){
-      r = fread(&buffer, 1, sizeof(buffer), fp);
-      if (r <= 0) break;
-      obj->pSend(obj->getFD(), buffer, r);
-    }
-    fclose(fp);
-    obj->close();
-    return 1;
-  }
-  if (!(obj->ptheCookie.count("SESSIONID") > 0 && session.count(obj->ptheCookie["SESSIONID"]) > 0)) {
-    loginFail(obj);
-    return EHTTP_ERR_GENERIC;
-  }
-  string userid = get_userid_from_session(obj);
-
-  DownloadPtr download(new Download);
-  download->ehttp = obj;
-  download->userid = upload->userid;
-  download->key = upload->key;
-  download->command = upload->command;
-  download->requestpath = upload->requestpath;
-
-  execute_downloading(upload, download);
-  return 1;
 }
 
 void *session_killer(void *arg) {
@@ -710,26 +622,6 @@ void *timeout_killer(void *arg) {
       }
     }
     TUNLOCK(mutex_queue_requests_key);
-
-    TLOCK(mutex_queue_uploads);
-    while(!queue_uploads.empty()) {
-      UploadPtr ptr = queue_uploads.front();
-      if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
-        queue_uploads.pop();
-        log(1) << "UPLOADQUEUE:" << ptr.use_count() << "(" << ptr->ehttp->timestamp <<" / "<<now<<")"<<endl;
-        if (!ptr.unique()) {
-          TLOCK(mutex_uploads);
-          uploads.erase(ptr->key);
-          TUNLOCK(mutex_uploads);
-        } else {
-          ptr->ehttp->timeout();
-        }
-      } else {
-        break;
-      }
-    }
-    TUNLOCK(mutex_queue_uploads);
-  }
 }
 void *main_thread(void *arg) {
   Thread *thread = (Thread *)arg;
@@ -758,7 +650,6 @@ void *main_thread(void *arg) {
     http->add_handler("/upload", upload_handler);
     http->add_handler("/request", request_handler);
     http->add_handler("/login", login_handler);
-    http->add_handler("/download", download_handler);
     http->add_handler("/mac", mac_handler);
     http->add_handler("/status", status_handler);
     http->add_handler(NULL, handleDefault);
