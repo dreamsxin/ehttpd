@@ -41,7 +41,7 @@ int cnt=0;
 int listenfd;
 int cookie_index=1;
 int PORT = 8000;
-int timeout_sec_default = 30;
+int timeout_sec_default = 10;
 int timeout_sec_polling = 60;
 int session_expired_time = 3600;
 
@@ -124,6 +124,15 @@ string get_userid_from_session(EhttpPtr obj) {
   return userid;
 }
 
+string get_username_from_session(EhttpPtr obj) {
+  string session_id = obj->ptheCookie["SESSIONID"];
+  TLOCK(mutex_session);
+  string userid = session[session_id].username;
+  session[session_id].timestamp = time(NULL);
+  TUNLOCK(mutex_session);
+  return userid;
+}
+
 int status_handler (EhttpPtr obj) {
   obj->out_set_file("stringtemplate.json");
   stringstream ss;
@@ -145,6 +154,11 @@ int login_handler(EhttpPtr obj) {
   if ((obj->getPostParams()).count("email") > 0) {
     log(0) << "POST" << endl;
     string email = obj->getPostParams()["email"];
+	size_t atpos = email.find("@");
+	string username = email;
+	if (atpos != string::npos) {
+	  username = email.substr(0, atpos);
+	}
     string padpasskey = obj->getPostParams()["padpasskey"];
     string installkey = obj->getPostParams()["installkey"];
     string user_id, macaddress;
@@ -155,6 +169,8 @@ int login_handler(EhttpPtr obj) {
       obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid;
       TLOCK(mutex_session);
       session[sessionid].user_id = user_id;
+	  session[sessionid].email = email;
+	  session[sessionid].username = username;
       session[sessionid].macaddress = macaddress;
       session[sessionid].timestamp = time(NULL);
       TUNLOCK(mutex_session);
@@ -170,6 +186,8 @@ int login_handler(EhttpPtr obj) {
       obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid;
       TLOCK(mutex_session);
       session[sessionid].user_id = user_id;
+	  session[sessionid].email = email;
+	  session[sessionid].username = username;
       session[sessionid].macaddress = macaddress;
       session[sessionid].timestamp = time(NULL);
       TUNLOCK(mutex_session);
@@ -383,6 +401,23 @@ int request_handler(EhttpPtr obj) {
     obj->close();
     return ret;
   } 
+
+  if (obj->getUrlParams().count("device") == 0 || obj->getUrlParams()["device"] == "") {
+	string username = get_username_from_session(obj);
+    obj->out_set_file("device.json");
+    obj->out_replace_token("username", username);
+    obj->out_replace();
+    obj->out_commit();
+    obj->close();
+    return EHTTP_ERR_OK;
+  } else if (obj->getUrlParams().count("device") > 0 && obj->getUrlParams()["device"] != "com") {
+    obj->out_set_file("errormessage.json");
+    obj->out_replace_token("fail", "Device doesn't exist");
+    obj->out_replace();
+    obj->out_commit();
+    obj->close();
+    return EHTTP_ERR_OK;
+  }
 
   RequestPtr request(new Request);
   request->ehttp = obj;
@@ -622,6 +657,7 @@ void *timeout_killer(void *arg) {
       }
     }
     TUNLOCK(mutex_queue_requests_key);
+  }
 }
 void *main_thread(void *arg) {
   Thread *thread = (Thread *)arg;

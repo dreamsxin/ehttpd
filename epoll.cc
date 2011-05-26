@@ -92,15 +92,13 @@ bool DrEpoll::process() {
     log(0) << "download rem:" << trans->dn->remaining << " r1: " << r1 << endl;
 
     r2 = trans->dn->ehttp->pSend(trans->dn->ehttp->getFD(), buffer, r1);
-    /*if (r2 < 0 || r1 != r2) {
+    if (r2 < 0 || r1 != r2) {
       log(1) << "close r2 rem:" << trans->dn->remaining << " r2: " << r2 << endl;
       epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, &(events[i]));
       trans->close();
       transfers.erase(trans->dn->key);
       continue;
-    }*/
-    saveToFile(trans->up, buffer, r1);
-    // log(1) << trans->dn->ehttp->getFD() << " / " << trans->up->ehttp->getFD() << " / " <<  "download r:" << trans->dn->remaining << " r2: " << r2 << endl;
+    }
 
     trans->dn->remaining -= r1;
     if (trans->dn->remaining <= 0) {

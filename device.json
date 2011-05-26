@@ -1,0 +1,10 @@
+{
+   "list" : [
+      {
+         "name" : "##username##'s computer",
+         "device" : "com",
+         "type" : "COMPUTER"
+      }
+   ]
+}
+
