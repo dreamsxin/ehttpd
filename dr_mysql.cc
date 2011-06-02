@@ -41,16 +41,16 @@ bool DrMysql::login(string const &email, string const &password,
   try{
     driver->threadInit();
     pthread_mutex_lock(&mutex_login);
-    string query = "SELECT * from co_user where email = '" + email + "'";
+    string query = "SELECT *,password('" + password + "') as enc from co_user where email = '" + email + "'";
     scoped_ptr<Statement> stmt(con->createStatement());
     scoped_ptr<ResultSet> res(stmt->executeQuery(query));
 
     if (!res->next()) {
-      throw runtime_error("No user");
+      throw runtime_error("Non-existing user");
     }
 
     if (password != res->getString("installkey") &&
-        password != res->getString("password")) {
+        res->getString("enc") != res->getString("encpassword")) {
       throw runtime_error("Invild password");
     }
 
