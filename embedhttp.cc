@@ -45,18 +45,50 @@
 string Ehttp::template_path = "./";
 string Ehttp::save_path = "./";
 
-ssize_t EhttpRecv(int fd, void *buf, size_t len) {
-  int ret = recv(fd,buf,len,0);
-  if (ret == -1) {
-    int nError = errno;
-    log(0) << "RECV ERROR!! CODE = " <<  nError << endl;
+ssize_t Ehttp::send(const void *buf, size_t len) {
+  ssize_t i =  SSL_write((SSL*)ssl,buf,len);
+  printf("Wrote %d of %d bytes\r\n",i,len);
+  // Handle OpenSSL quirks
+  if( i== 0) {
+    switch( SSL_get_error((SSL*)ssl,i) ) {
+    case SSL_ERROR_ZERO_RETURN:
+      // A 'real' nice end of data close connection
+      break;
+    case SSL_ERROR_WANT_WRITE:
+      //Don't do this for production code
+      log(2) << "SLL ERROR _WANT WRITE" << endl;
+      return send(buf,len);
+    default:
+      //The parser doesn't care what error, just that there is one
+      //so -1 is OK
+      return -1;
+    }
   }
-  return ret;
+  return i;
 }
 
-ssize_t EhttpSend(int fd, const void *buf, size_t len) {
-  return send(fd,buf,len,0);
+ssize_t Ehttp::recv(void *buf, size_t len) {
+  ssize_t i=  SSL_read((SSL*)ssl,buf,len);
+
+  if( i== 0) {
+    switch( SSL_get_error((SSL*)ssl,i) ) {
+      case SSL_ERROR_ZERO_RETURN:
+        // A 'real' nice end of data close connection
+        break;
+      case SSL_ERROR_WANT_READ:
+        //Don't do this for production code
+        log(2) << "SLL ERROR _WANT READ" << endl;
+        return recv(buf,len);
+      default:
+        //The parser doesn't care what error, just that there is one
+        //so -1 is OK
+        return -1;
+      }
+    }
+
+  return i;
 }
+
 
 int Ehttp::getRequestType(void) {
   return requesttype;
@@ -214,7 +246,7 @@ int Ehttp::out_commit_binary(void) {
         int remain = r;
         int total = remain;
         while(remain) {
-          int w = pSend(sock, buffer + (total - remain), remain);
+          int w = send(buffer + (total - remain), remain);
           log(0) << w << endl;
           if(w < 0 || fdState == 1) {
             err = w;
@@ -265,7 +297,7 @@ int Ehttp::out_commit(int header) {
   int remain = outbuffer.length();
   int total = remain;
   while (remain > 0) {
-    w=pSend(sock, outbuffer.c_str() + (total - remain), remain);
+    w=send(outbuffer.c_str() + (total - remain), remain);
     log(0) << w << endl;
     if(w < 0 || fdState == 1) {
       err = w;
@@ -279,8 +311,6 @@ int Ehttp::out_commit(int header) {
 
 int Ehttp::init(void) {
   log(0) << "Ehttp init..." << endl;
-  pSend = EhttpSend;
-  pRecv = EhttpRecv;
   pPreRequestHandler = NULL;
   return EHTTP_ERR_OK;
 }
@@ -305,9 +335,9 @@ int Ehttp::read_header(string *header) {
   Byte buffer[INPUT_BUFFER_SIZE];
 
   while((offset = header->find("\r\n\r\n")) == string::npos) {
-    int r = pRecv(sock, buffer, INPUT_BUFFER_SIZE - 1);
+    int r = recv(buffer, INPUT_BUFFER_SIZE - 1);
 
-    log(0) << "read_header("<<sock<<") r:" << r << "/fdState : " << fdState << endl;
+    log(0) << "read_header("<<getFD()<<") r:" << r << "/fdState : " << fdState << endl;
 
     if(r <= 0 || fdState == 1) {
       return EHTTP_ERR_GENERIC;
@@ -526,7 +556,7 @@ int Ehttp::parse_header(string &header) {
 }
 
 int Ehttp::getFD() {
-  return sock;
+  return SSL_get_fd(ssl);
 }
 
 int Ehttp::getContentLength() {
@@ -594,7 +624,7 @@ int Ehttp:: parse_message() {
 
     Byte buffer[INPUT_BUFFER_SIZE];
     while(contentlength > message.length()) {
-      int r = pRecv(sock, buffer, INPUT_BUFFER_SIZE - 1);
+      int r = recv(buffer, INPUT_BUFFER_SIZE - 1);
       if(r <= 0 || fdState == 1) {
         return EHTTP_ERR_GENERIC;
       }
@@ -620,13 +650,13 @@ int Ehttp:: parse_message() {
 }
 
 
-int Ehttp::parse_request(int fd) {
+int Ehttp::parse_request(SSL *ssl) {
   int (*pHandler)(EhttpPtr obj)=NULL;
 
   log(0) << "parse_request..." << endl;
   /* Things in the object which must be reset for each request */
   filename="";
-  sock=fd;
+  this->ssl = ssl;
   filetype=EHTTP_TEXT_FILE;
   url_parms.clear();
   post_parms.clear();
@@ -639,19 +669,19 @@ int Ehttp::parse_request(int fd) {
   string message;
 
 
-  log(0) << "FD:" << fd << " read_header" << endl;
+  log(0) << "FD:" << getFD() << " read_header" << endl;
   if(read_header(&header) != EHTTP_ERR_OK) {
     log(2) << "Error parsing request" << endl;
     return EHTTP_ERR_GENERIC;
   }
 
-  log(0) << "FD:" << fd << " parse_header" << endl;
+  log(0) << "FD:" << getFD() << " parse_header" << endl;
   if(parse_header(header) != EHTTP_ERR_OK) {
     log(2) << "Error parsing request" << endl;
     return EHTTP_ERR_GENERIC;
   }
 
-  log(0) << "FD:" << fd << " if(requesttyp ..." << endl;
+  log(0) << "FD:" << getFD() << " if(requesttyp ..." << endl;
 
   log(0) << filename << endl;
   if(filename == "/upload" && global_parms["command"] == "getfile") {
@@ -670,19 +700,19 @@ int Ehttp::parse_request(int fd) {
   //   return out_commit(EHTTP_LENGTH_REQUIRED);
   // }
 
-  log(0) << "FD:" << fd << " out_buffer_clear" << endl;
+  log(0) << "FD:" << getFD() << " out_buffer_clear" << endl;
 
   //Call the default handler if we didn't get the filename
   out_buffer_clear();
 
-  log(0) << "FD:" << fd << " pPreRequestHandler" << endl;
+  log(0) << "FD:" << getFD() << " pPreRequestHandler" << endl;
   if( pPreRequestHandler ) pPreRequestHandler( shared_from_this() );
   if( !filename.length() ) {
     log(2) << __LINE__ << " Call default handler no filename" << endl;
     return pDefaultHandler( shared_from_this() );
   }
 
-  log(0) << "FD:" << fd << " pHandler=handler_map[filename]" << endl;
+  log(0) << "FD:" << getFD() << " pHandler=handler_map[filename]" << endl;
 
   //Lookup the handler function fo this filename
   pHandler=handler_map[filename];
@@ -692,23 +722,9 @@ int Ehttp::parse_request(int fd) {
     return pDefaultHandler( shared_from_this() );
   }
 
-  log(0) << "FD:" << fd << " pHandler( shared_from_this() " << endl;
+  log(0) << "FD:" << getFD() << " pHandler( shared_from_this() " << endl;
   log(0) << __LINE__ << " Call user handler" << endl;
   return pHandler( shared_from_this() );
-}
-
-void Ehttp::setSendFunc( ssize_t (*pS)(int fd, const void *buf, size_t len) ) {
-  if( pS )
-    pSend=pS;
-  else
-    pSend=EhttpSend;
-}
-
-void Ehttp::setRecvFunc( ssize_t (*pR)(int fd, void *buf, size_t len) ) {
-  if( pR )
-    pRecv=pR;
-  else
-    pRecv=EhttpRecv;
 }
 
 map <string, string> & Ehttp::getResponseHeader( void ) {
@@ -720,19 +736,45 @@ int Ehttp::isClose() {
 }
 
 void Ehttp::close() {
+  switch( SSL_shutdown(ssl) ) {
+  case 1:
+    // Shutdown complete
+    printf("Shutdown complete\r\n");
+    break;
+#if 0
+    // According to OpenSSL, we only need to call shutdown
+    // again if we are going to keep the TCP Connection
+    // open.  We are not, we are going to close, and doing
+    // another shutdown causes everyone to stall..
+
+  case 0:
+    // 1/2 of bi-dir connection shut down
+    // do it again
+    printf("Shutdown 1/2 complete\r\n");
+    SSL_shutdown(ssl);
+    break;
+#endif
+  case -1:
+    printf("Error shutting down connection %d",SSL_get_error(ssl,-1));
+    break;
+
+  default:
+    printf("Unknown API result\r\n");
+    break;
+  }  
+
   if (fdState == 1) {
-    log(2) << "Connection closed already... (" << sock << ")" << endl;
+    log(2) << "Connection closed already... (" << getFD() << ")" << endl;
     return;
   }
-  log(1) << "Connection close... (" << sock << ")" << endl;
-  // ::close(sock);
-  ::shutdown(sock, SHUT_RDWR);
-  ::close(sock);
+  log(1) << "Connection close... (" << getFD() << ")" << endl;
+  ::shutdown(getFD(), SHUT_RDWR);
+  ::close(getFD());
   fdState = 1;
 }
 
 int Ehttp::error(const string &error_message) {
-  log(2) << error_message << "(" << sock << ")" << endl;
+  log(2) << error_message << "(" << getFD() << ")" << endl;
   out_set_file("errormessage.json");
   out_replace_token("fail", error_message);
   out_replace();
@@ -743,7 +785,7 @@ int Ehttp::error(const string &error_message) {
 
 int Ehttp::timeout() {
   if (!isClose()) {
-    log(0) << "timeout (" << sock << ")" << endl;
+    log(0) << "timeout (" << getFD() << ")" << endl;
     out_set_file("timeout.json");
     out_replace();
     out_commit();
@@ -753,7 +795,7 @@ int Ehttp::timeout() {
 }
 
 int Ehttp::uploadend() {
-  log(2) << "upload end (" << sock << ")" << endl;
+  log(2) << "upload end (" << getFD() << ")" << endl;
   out_set_file("request.json");
   out_replace_token("jsondata", "\"\"");
   out_replace();

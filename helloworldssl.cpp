@@ -69,11 +69,11 @@ int main( int argc, char *argv[] ) {
 
   // Generate your own key and cert files...
   //   http://sial.org/howto/openssl/csr/
-  if ( SSL_CTX_use_certificate_file(ctx, "./domain.cert",SSL_FILETYPE_PEM)<0 ) {
+  if ( SSL_CTX_use_certificate_file(ctx, "./server.cert",SSL_FILETYPE_PEM)<0 ) {
     printf("Can’t read cert file");
     }
 
-  if(!(SSL_CTX_use_PrivateKey_file(ctx, "./domain.key",SSL_FILETYPE_PEM))) {
+  if(!(SSL_CTX_use_PrivateKey_file(ctx, "./private.key",SSL_FILETYPE_PEM))) {
     printf("Can’t read key file");
 
     }

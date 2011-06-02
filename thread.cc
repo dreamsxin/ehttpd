@@ -23,6 +23,7 @@
 #include "dr_mysql.h"
 #include "session.h"
 #include "log.h"
+#include "ssl.h"
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
@@ -84,6 +85,13 @@ DrMysql db;
 
 string hostname = "";
 
+SSL_CTX *ctx;
+
+int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata) {
+  strcpy(buf,"dlp1004");
+  return 7;
+}
+
 void nonblock(int sockfd) {
   int opts;
   opts = fcntl(sockfd, F_GETFL);
@@ -99,8 +107,8 @@ void nonblock(int sockfd) {
 }
 
 void loginFail (EhttpPtr obj) {
-  obj->out_set_file("stringtemplate.json");
-  obj->out_replace_token("string","Login required");
+  obj->out_set_file("errormessage.json");
+  obj->out_replace_token("fail","Session is closed. Please sign in.");
   obj->out_replace();
   obj->out_commit();
   obj->close();
@@ -298,14 +306,16 @@ int execute_downloading(UploadPtr up, DownloadPtr dn) {
   upload_file_size += up->ehttp->getContentLength();
 
   found = filename.rfind(".");
-  if (found == string::npos || mimetype.count(filename.substr(found+1)) == 0) {
+  string extension = filename.substr(found+1);
+  boost::to_lower(extension);
+  if (found == string::npos || mimetype.count(extension) == 0) {
     dn->ehttp->getResponseHeader()["Content-Type"] = "application/octet-stream";
   } else {
-    dn->ehttp->getResponseHeader()["Content-Type"] = mimetype[filename.substr(found+1)];
+    dn->ehttp->getResponseHeader()["Content-Type"] = mimetype[extension];
   }
   dn->ehttp->out_commit();
 
-  int res = dn->ehttp->pSend(dn->ehttp->getFD(),
+  int res = dn->ehttp->send(
               up->ehttp->message.c_str(),
               up->ehttp->message.length());
 
@@ -689,8 +699,28 @@ void *main_thread(void *arg) {
     http->add_handler("/mac", mac_handler);
     http->add_handler("/status", status_handler);
     http->add_handler(NULL, handleDefault);
+    SSL *ssl=SSL_new(ctx);
+    if( !SSL_set_fd(ssl, socket) ) {
+      log(3) << "set fd failed" << endl;
+    }
 
-    http->parse_request(socket);
+    int err = SSL_accept(ssl);
+    if (err <= 0) {
+      log(3) << "SSL Accept Error " ;
+      int ret =  SSL_get_error(ssl,err);
+      switch(ret) {
+      case SSL_ERROR_NONE: cout << "SSL_ERROR_NONE" << endl; break;
+      case SSL_ERROR_ZERO_RETURN: cout << "SSL_ERROR_ZERO_RETURN" << endl; break;
+      case SSL_ERROR_WANT_READ: cout << "SSL_ERROR_WANT_READ" << endl; break;
+      case SSL_ERROR_WANT_WRITE: cout << "SSL_ERROR_WANT_WRITE" << endl; break;
+      case SSL_ERROR_WANT_CONNECT: cout << "SSL_ERROR_WANT_CONNECT" << endl; break;
+      case SSL_ERROR_WANT_ACCEPT: cout << "SSL_ERROR_WANT_ACCEPT" << endl; break;
+      case SSL_ERROR_WANT_X509_LOOKUP: cout << "SSL_ERROR_WANT_X509_LOOKUP" << endl; break;
+      case SSL_ERROR_SYSCALL: cout << "SSL_ERROR_SYSCALL" << endl; break;
+      case SSL_ERROR_SSL: cout << "SSL_ERROR_SSL" << endl; break;
+      }
+    }
+    http->parse_request(ssl);
 
     log(0) << "FETCH WORK END! THREAD:" << thread->tid << endl;
 
@@ -766,6 +796,20 @@ int main(int argc, char** args) {
   deque<int> conn_pool;
   Thread threads[MAX_THREAD];
 
+  SSL_load_error_strings();
+  SSLeay_add_ssl_algorithms();
+  ctx=SSL_CTX_new(SSLv3_method());
+  SSL_CTX_set_default_passwd_cb(ctx, &pem_passwd_cb);
+
+  if ( SSL_CTX_use_certificate_file(ctx, "./server.crt",SSL_FILETYPE_PEM)<0 ) {
+    log(2) << "Can't read cert file" << endl;
+  }
+
+  if(!(SSL_CTX_use_PrivateKey_file(ctx, "./server.key",SSL_FILETYPE_PEM))) {
+    log(2) << "Can't read key file" << endl;
+
+  }
+
   /* create threads */
   for(int i = 0; i < MAX_THREAD; i++) {
     threads[i].conn_pool = &conn_pool;
@@ -800,13 +844,15 @@ int main(int argc, char** args) {
   listen(listenfd, 1024);
 
   struct sockaddr_in client_addr;
-  socklen_t sin_size = sizeof(struct sockaddr_in);
+  socklen_t sin_size = sizeof(struct sockaddr);
 
   log(2) << "DR Server Start! Listen..." << endl;
   for( ; ; ) {
     if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
       exit(1);
     }
+    static int linger[2] = {0,0};
+    setsockopt(clifd, SOL_SOCKET,SO_LINGER,&linger, sizeof(linger));
     //    nonblock(clifd);
     // nonblock(clifd);
     TLOCK(new_connection_mutex);
@@ -814,6 +860,5 @@ int main(int argc, char** args) {
     conn_pool.push_back(clifd);
     TUNLOCK(new_connection_mutex);
   }
-
   return 0;
 }
