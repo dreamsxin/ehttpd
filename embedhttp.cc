@@ -417,7 +417,7 @@ int Ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
 int Ehttp::parse_header(string &header) {
   char *request=NULL;
   char *request_end=NULL;
-  const char *pHeader=header.c_str();
+  char *pHeader = const_cast<char *>(header.c_str());
 
   log(0) << "parse_header..." << endl;
   filename="";

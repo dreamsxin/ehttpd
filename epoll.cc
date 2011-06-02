@@ -5,6 +5,8 @@
 #include <signal.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "epoll.h"
 #include "embedhttp.h"

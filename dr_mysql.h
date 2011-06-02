@@ -7,7 +7,7 @@ using namespace boost;
 #include <driver.h>
 #include <connection.h>
 
-#define DBHOST "tcp://directreader.co.kr:3306"
+#define DBHOST "tcp://directreader.net:3306"
 #define USER "namilee"
 #define PASSWORD "dlp1004"
 #define DATABASE "DIRECTREADER"

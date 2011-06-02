@@ -50,6 +50,7 @@
 #include <ctype.h>
 #include <crypt.h>
 #include <errno.h>
+#include <string.h>
 #include <list>
 #include <string>
 #include <map>
