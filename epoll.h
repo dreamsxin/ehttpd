@@ -7,7 +7,7 @@
 #include "connection.h"
 #define EPOLL_EVENTS 10000
 #define EPOLL_THREADS 1
-#define EPOLL_TASKS 100
+#define EPOLL_TASKS 200
 
 using namespace std;
 

@@ -4,7 +4,6 @@
 #include <memory>
 #include <string>
 #include <stdexcept>
-#include <pthread.h>
 
 /* MySQL Connector/C++ specific headers */
 #include <driver.h>
@@ -21,10 +20,9 @@
 #include "dr_mysql.h"
 using namespace sql;
 
-pthread_mutex_t mutex_login = PTHREAD_MUTEX_INITIALIZER;
-
 scoped_ptr<sql::Connection> DrMysql::con;
 sql::Driver* DrMysql::driver = NULL;
+pthread_mutex_t DrMysql::mutex_login = PTHREAD_MUTEX_INITIALIZER;
 
 DrMysql::DrMysql() {
 }
@@ -39,8 +37,8 @@ bool DrMysql::login(string const &email, string const &password,
                     string *user_id,
                     string *macaddress) {
   try{
-    driver->threadInit();
     pthread_mutex_lock(&mutex_login);
+    driver->threadInit();
     string query = "SELECT *,password('" + password + "') as enc from co_user where email = '" + email + "'";
     scoped_ptr<Statement> stmt(con->createStatement());
     scoped_ptr<ResultSet> res(stmt->executeQuery(query));

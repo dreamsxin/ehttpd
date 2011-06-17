@@ -44,6 +44,7 @@ int cookie_index=1;
 int PORT = 8000;
 int timeout_sec_default = 10;
 int timeout_sec_polling = 60;
+int timeout_sec_requests_key = 30;
 int session_expired_time = 3600;
 
 long long request_call_count = 0;
@@ -92,18 +93,15 @@ int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata) {
   return 7;
 }
 
-void nonblock(int sockfd) {
-  int opts;
-  opts = fcntl(sockfd, F_GETFL);
-  if(opts < 0) {
-    perror("fcntl(F_GETFL)\n");
-    exit(1);
-  }
-  opts = (opts | O_NONBLOCK);
-  if(fcntl(sockfd, F_SETFL, opts) < 0) {
-    perror("fcntl(F_SETFL)\n");
-    exit(1);
-  }
+int nonblock(int fd, int nblockFlag = 1)
+{
+   int flags;
+ 
+   flags = fcntl( fd, F_GETFL, 0);
+   if ( nblockFlag == 1 )
+      return fcntl( fd, F_SETFL, flags | O_NONBLOCK);
+   else
+      return fcntl( fd, F_SETFL, flags & (~O_NONBLOCK));
 }
 
 void loginFail (EhttpPtr obj) {
@@ -315,12 +313,20 @@ int execute_downloading(UploadPtr up, DownloadPtr dn) {
   }
   dn->ehttp->out_commit();
 
-  int res = dn->ehttp->send(
+  log(1) << up->ehttp->message.length() << endl;
+
+  int res;
+  if (!up->ehttp->message.empty())  {
+    res  = dn->ehttp->send( 
               up->ehttp->message.c_str(),
               up->ehttp->message.length());
+  } else {
+    res = 0;
+  }
 
   log(1) << "Download start:" << filename << " " << strContentLength.str() << " " << res << endl;
 
+  log(1) << "RES : " << res << endl;
   if (res < 0 || res != (int)up->ehttp->message.length()) {
     log(1) << "Error first sending" << endl;
     dn->ehttp->close();
@@ -533,8 +539,10 @@ int upload_handler(EhttpPtr obj) {
   RequestPtr request;
   TLOCK(mutex_requests_key);
   if (requests_key.count(key)) {
+    log(1) << "incrkey " << key << " is erased!" << endl;
     request = requests_key[key];
     requests_key.erase(key);
+    log(1) << "request count " << request.use_count() << endl;
   }
   TUNLOCK(mutex_requests_key);
 
@@ -558,6 +566,7 @@ int upload_handler(EhttpPtr obj) {
     download->requestpath = request->requestpath;
 
     execute_downloading(upload, download);
+    log(1) << "execute_downloading end!! request count " << request.use_count() << endl;
   } else {
     log(0) << "jsondata : " << jsondata << endl;
     request->ehttp->out_set_file("request.json");
@@ -610,6 +619,13 @@ void *session_killer(void *arg) {
   }
 }
 
+void *mysql_updator(void *arg) {
+  while(1) {
+    DrMysql::connection_init();
+    sleep(600);
+  }
+}
+
 void *timeout_killer(void *arg) {
   while(1) {
     sleep(1);
@@ -618,6 +634,7 @@ void *timeout_killer(void *arg) {
     while (!queue_requests.empty()) {
       RequestPtr ptr = queue_requests.front();
       if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
+        log(1) << "request queue timeout" << endl;
         queue_requests.pop();
         TLOCK(mutex_requests);
         if (requests.count(ptr->userid) > 0 && requests[ptr->userid].get() == ptr.get()) {
@@ -636,6 +653,7 @@ void *timeout_killer(void *arg) {
     while(!queue_pollings.empty()) {
       PollingPtr ptr = queue_pollings.front();
       if (ptr->ehttp->timestamp + timeout_sec_polling <= now) {
+        log(1) << "polling queue timeout" << endl;
         log(1) << "polling queue: " << ptr->userid << endl;
         queue_pollings.pop();
         TLOCK(mutex_pollings);
@@ -652,14 +670,18 @@ void *timeout_killer(void *arg) {
 
     TLOCK(mutex_queue_requests_key);
     while(!queue_requests_key.empty()) {
+      log(1) << "requests key queue timeout"  << queue_requests_key.front().use_count() << " " << queue_requests_key.front()->key  << endl;
       RequestPtr ptr = queue_requests_key.front();
-      if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
+      log(1) << "### " << ptr->ehttp->timestamp << " + " << timeout_sec_default << " <=? " << now << endl;
+      if (ptr->ehttp->timestamp + timeout_sec_requests_key <= now) {
         queue_requests_key.pop();
         if (!ptr.unique()) {
           TLOCK(mutex_requests_key);
+          log(1) << "erase req key " << ptr->key << endl;
           requests_key.erase(ptr->key);
           TUNLOCK(mutex_requests_key);
         } else {
+          log(1) << "call ehttp timeout " << endl;
           ptr->ehttp->timeout();
         }
       } else {
@@ -704,6 +726,7 @@ void *main_thread(void *arg) {
       log(3) << "set fd failed" << endl;
     }
 
+    // nonblock(socket);
     int err = SSL_accept(ssl);
     if (err <= 0) {
       log(3) << "SSL Accept Error " ;
@@ -791,7 +814,8 @@ int main(int argc, char** args) {
 
   signal(SIGPIPE, SIG_IGN);
 
-  DrMysql::connection_init();
+  pthread_t tid_mysql;
+  pthread_create(&tid_mysql, NULL, &mysql_updator, NULL);
 
   deque<int> conn_pool;
   Thread threads[MAX_THREAD];
@@ -801,11 +825,11 @@ int main(int argc, char** args) {
   ctx=SSL_CTX_new(SSLv3_method());
   SSL_CTX_set_default_passwd_cb(ctx, &pem_passwd_cb);
 
-  if ( SSL_CTX_use_certificate_file(ctx, "./server.crt",SSL_FILETYPE_PEM)<0 ) {
+  if ( SSL_CTX_use_certificate_file(ctx, "./server1024.crt",SSL_FILETYPE_PEM)<0 ) {
     log(2) << "Can't read cert file" << endl;
   }
 
-  if(!(SSL_CTX_use_PrivateKey_file(ctx, "./server.key",SSL_FILETYPE_PEM))) {
+  if(!(SSL_CTX_use_PrivateKey_file(ctx, "./server1024.key",SSL_FILETYPE_PEM))) {
     log(2) << "Can't read key file" << endl;
 
   }
@@ -815,6 +839,7 @@ int main(int argc, char** args) {
     threads[i].conn_pool = &conn_pool;
     pthread_create(&threads[i].tid, NULL, &main_thread, (void *)&threads[i]);
   }
+
 
   pthread_t tid;
   pthread_create(&tid, NULL, &timeout_killer, NULL);
@@ -853,8 +878,6 @@ int main(int argc, char** args) {
     }
     static int linger[2] = {0,0};
     setsockopt(clifd, SOL_SOCKET,SO_LINGER,&linger, sizeof(linger));
-    //    nonblock(clifd);
-    // nonblock(clifd);
     TLOCK(new_connection_mutex);
     log(1) << "Accepted... " << clifd << "  / Queue size : " << conn_pool.size() << " / Thread: " << MAX_THREAD << endl;
     conn_pool.push_back(clifd);

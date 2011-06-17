@@ -48,7 +48,7 @@ void DrEpoll::add(TransferPtr trans) {
   event.data.ptr = (void *)trans.get();
 
   if (epoll_ctl(g_epoll_fd, EPOLL_CTL_ADD, fd, &event) < 0) {
-    // return false;
+    return;
   }
 
   string &key = trans->up->key;
@@ -72,16 +72,14 @@ bool DrEpoll::process() {
     return false; /* return but this is epoll wait error */
   }
 
-  char buffer[10000];
+  char buffer[1024];
   for (int i = 0 ; i < nfds ; i++) {
 
     Transfer *trans = (Transfer *)events[i].data.ptr;
     int fd = trans->up->ehttp->getFD();
 
-    log(0) << "up::" << fd << endl;
-
     int r1, r2;
-    // log(0) << "upload fd:" << dn->fd_upload->getFD() << " dn:" << dn->fd_download->getFD() << endl;
+    log(1) << "upload fd:" << trans->up->ehttp->getFD() << " dn:" << trans->dn->ehttp->getFD() << endl;
 
     r1 = trans->up->ehttp->recv(buffer, sizeof(buffer));
     if (r1 < 0) {
@@ -91,8 +89,9 @@ bool DrEpoll::process() {
       transfers.erase(trans->dn->key);
       continue;
     }
-    log(0) << "download rem:" << trans->dn->remaining << " r1: " << r1 << endl;
+    log(1) << "download rem:" << trans->dn->remaining << " r1: " << r1 << endl;
 
+    trans->up->ehttp->timestamp = trans->dn->ehttp->timestamp =  time(NULL);
     r2 = trans->dn->ehttp->send(buffer, r1);
     if (r2 < 0 || r1 != r2) {
       log(1) << "close r2 rem:" << trans->dn->remaining << " r2: " << r2 << endl;
@@ -101,18 +100,19 @@ bool DrEpoll::process() {
       transfers.erase(trans->dn->key);
       continue;
     }
-
+   
     trans->dn->remaining -= r1;
     if (trans->dn->remaining <= 0) {
+      log(1) << "remaining <= 0 : " << trans->dn->remaining << endl;
       epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, &(events[i]));
       trans->close();
       transfers.erase(trans->dn->key);
     } else {
+      log(1) << "remaining > 0: " << trans->dn->remaining << endl;
       struct epoll_event event;
       event.events = EPOLLIN | EPOLLONESHOT;
       event.data.fd = fd;
       event.data.ptr = trans;
-
       epoll_ctl(g_epoll_fd, EPOLL_CTL_MOD, fd, &(event));
     }
   }
@@ -120,7 +120,9 @@ bool DrEpoll::process() {
 }
 
 void DrEpoll::thread() {
-  while(process());
+  while(1) {
+    process();
+  }
 }
 
 void DrEpoll::worker() {
