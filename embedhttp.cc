@@ -46,6 +46,9 @@ string Ehttp::template_path = "./";
 string Ehttp::save_path = "./";
 
 ssize_t Ehttp::send(const void *buf, size_t len) {
+  if (!isSsl)
+    return ::send(getFD(), buf, len, 0);
+
   ssize_t i = SSL_write((SSL*)ssl,buf,len);
   // printf("Wrote %d of %d bytes\r\n",i,len);
   // Handle OpenSSL quirks
@@ -69,9 +72,10 @@ ssize_t Ehttp::send(const void *buf, size_t len) {
 }
 
 ssize_t Ehttp::recv(void *buf, size_t len) {
+  if (!isSsl)
+    return ::recv(getFD(), buf, len, 0);
 
   while(1) {
-
     ssize_t i = SSL_read((SSL*)ssl,buf,len);
     if( i <= 0) {
       int err = SSL_get_error((SSL*)ssl,i);
@@ -561,7 +565,7 @@ int Ehttp::parse_header(string &header) {
 }
 
 int Ehttp::getFD() {
-  return SSL_get_fd(ssl);
+  return socket;
 }
 
 int Ehttp::getContentLength() {
@@ -655,13 +659,12 @@ int Ehttp:: parse_message() {
 }
 
 
-int Ehttp::parse_request(SSL *ssl) {
+int Ehttp::parse_request() {
   int (*pHandler)(EhttpPtr obj)=NULL;
 
   log(0) << "parse_request..." << endl;
   /* Things in the object which must be reset for each request */
   filename="";
-  this->ssl = ssl;
   filetype=EHTTP_TEXT_FILE;
   url_parms.clear();
   post_parms.clear();
@@ -673,16 +676,14 @@ int Ehttp::parse_request(SSL *ssl) {
   string header;
   string message;
 
-
-  log(0) << "FD:" << getFD() << " read_header" << endl;
   if(read_header(&header) != EHTTP_ERR_OK) {
-    log(2) << "Error parsing request" << endl;
+    // non socket
+    // log(2) << "FD: " << getFD() << " " << "Error parsing request" << endl;
     return EHTTP_ERR_GENERIC;
   }
 
-  log(0) << "FD:" << getFD() << " parse_header" << endl;
   if(parse_header(header) != EHTTP_ERR_OK) {
-    log(2) << "Error parsing request" << endl;
+    log(2) << "FD: " << getFD() << " " << "Error parsing request" << endl;
     return EHTTP_ERR_GENERIC;
   }
 
@@ -741,37 +742,37 @@ int Ehttp::isClose() {
 }
 
 void Ehttp::close() {
-  switch( SSL_shutdown(ssl) ) {
-  case 1:
-    // Shutdown complete
-    printf("Shutdown complete\r\n");
-    break;
-#if 0
-    // According to OpenSSL, we only need to call shutdown
-    // again if we are going to keep the TCP Connection
-    // open.  We are not, we are going to close, and doing
-    // another shutdown causes everyone to stall..
+  if (isSsl) {
+    switch( SSL_shutdown(ssl) ) {
+    case 1:
+      // Shutdown complete
+      break;
+      // According to OpenSSL, we only need to call shutdown
+      // again if we are going to keep the TCP Connection
+      // open.  We are not, we are going to close, and doing
+      // another shutdown causes everyone to stall..
 
-  case 0:
-    // 1/2 of bi-dir connection shut down
-    // do it again
-    printf("Shutdown 1/2 complete\r\n");
-    SSL_shutdown(ssl);
-    break;
-#endif
-  case -1:
-    printf("Error shutting down connection %d",SSL_get_error(ssl,-1));
-    break;
+    case 0:
+      // 1/2 of bi-dir connection shut down
+      // do it again
+      sleep(1);
+      SSL_shutdown(ssl);
+      break;
 
-  default:
-    printf("Unknown API result\r\n");
-    break;
-  }  
+    case -1:
+      printf("Error shutting down connection %d",SSL_get_error(ssl,-1));
+      break;
+
+    default:
+      break;
+    }
+  }
 
   if (fdState == 1) {
-    log(2) << "Connection closed already... (" << getFD() << ")" << endl;
+    log(0) << "Connection closed already... (" << getFD() << ")" << endl;
     return;
   }
+
   log(1) << "Connection close... (" << getFD() << ")" << endl;
   ::shutdown(getFD(), SHUT_RDWR);
   ::close(getFD());

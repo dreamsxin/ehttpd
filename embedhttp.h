@@ -145,6 +145,8 @@ public:
   int parse_cookie(string &cookie_string);
 
   Ehttp(){
+    ssl = NULL;
+    isSsl = false;
     fdState=0;
     ++ehttp_inst_count;
     log(0) << "new Ehttp() : " << ehttp_inst_count <<  endl;
@@ -190,7 +192,7 @@ public:
 
   int out_commit(int header=EHTTP_HDR_OK);
 
-  int parse_request(SSL *ssl);
+  int parse_request();
 
   void add_handler( char *filename, int (*pHandler)(EhttpPtr obj));
 
@@ -209,6 +211,8 @@ public:
   int timeout();
   int uploadend();
 
+  bool isSsl;
+  int socket;
   SSL *ssl;
   ssize_t send(const void *buf, size_t len);
   ssize_t recv(void *buf, size_t len);

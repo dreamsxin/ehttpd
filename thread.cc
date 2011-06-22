@@ -39,7 +39,6 @@ namespace po = boost::program_options;
 
 #define MAX_THREAD 64
 int cnt=0;
-int listenfd;
 int cookie_index=1;
 int PORT = 8000;
 int timeout_sec_default = 10;
@@ -53,9 +52,12 @@ long long upload_call_count = 0;
 long long download_call_count = 0;
 long long upload_file_size = 0;
 
+string key_path = "./";
+
+
 typedef struct {
   pthread_t tid;
-  deque<int> *conn_pool;
+  deque<EhttpPtr> *conn_pool;
 } Thread;
 
 map <string, RequestPtr > requests;  // userid as key
@@ -93,10 +95,9 @@ int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata) {
   return 7;
 }
 
-int nonblock(int fd, int nblockFlag = 1)
-{
+int nonblock(int fd, int nblockFlag = 1) {
    int flags;
- 
+
    flags = fcntl( fd, F_GETFL, 0);
    if ( nblockFlag == 1 )
       return fcntl( fd, F_SETFL, flags | O_NONBLOCK);
@@ -180,7 +181,12 @@ int login_handler(EhttpPtr obj) {
       session[sessionid].macaddress = macaddress;
       session[sessionid].timestamp = time(NULL);
       TUNLOCK(mutex_session);
-      obj->out_set_file("login.json");
+
+      if (obj->isSsl)
+        obj->out_set_file("login_ssl.json");
+      else
+        obj->out_set_file("login.json");
+
       obj->out_replace_token("macaddress", macaddress);
       obj->out_replace_token("hostname", hostname);
       log(1) << email << " login success" << endl;
@@ -317,7 +323,7 @@ int execute_downloading(UploadPtr up, DownloadPtr dn) {
 
   int res;
   if (!up->ehttp->message.empty())  {
-    res  = dn->ehttp->send( 
+    res  = dn->ehttp->send(
               up->ehttp->message.c_str(),
               up->ehttp->message.length());
   } else {
@@ -416,7 +422,7 @@ int request_handler(EhttpPtr obj) {
     int ret = obj->out_commit();
     obj->close();
     return ret;
-  } 
+  }
 
   if (obj->getUrlParams().count("device") == 0 || obj->getUrlParams()["device"] == "") {
 	string username = get_username_from_session(obj);
@@ -696,13 +702,13 @@ void *main_thread(void *arg) {
 
   while (1) {
     // fetch a new job.
-    int socket;
-    log(0) << "FETCH START! THREAD:" << thread->tid << endl;
+    EhttpPtr http;
+
     for(;;) {
       sleep(1);
       TLOCK(new_connection_mutex);
       if (!thread->conn_pool->empty()) {
-        socket = thread->conn_pool->front();
+        http = thread->conn_pool->front();
         thread->conn_pool->pop_front();
         TUNLOCK(new_connection_mutex);
         break;
@@ -712,7 +718,6 @@ void *main_thread(void *arg) {
     log(0) << "FETCH END! THREAD:" << thread->tid << endl;
 
     // job
-    EhttpPtr http = EhttpPtr(new Ehttp());
     http->init();
     http->add_handler("/polling", polling_handler);
     http->add_handler("/upload", upload_handler);
@@ -721,32 +726,36 @@ void *main_thread(void *arg) {
     http->add_handler("/mac", mac_handler);
     http->add_handler("/status", status_handler);
     http->add_handler(NULL, handleDefault);
-    SSL *ssl=SSL_new(ctx);
-    if( !SSL_set_fd(ssl, socket) ) {
-      log(3) << "set fd failed" << endl;
-    }
 
-    // nonblock(socket);
-    int err = SSL_accept(ssl);
-    if (err <= 0) {
-      log(3) << "SSL Accept Error " ;
-      int ret =  SSL_get_error(ssl,err);
-      switch(ret) {
-      case SSL_ERROR_NONE: cout << "SSL_ERROR_NONE" << endl; break;
-      case SSL_ERROR_ZERO_RETURN: cout << "SSL_ERROR_ZERO_RETURN" << endl; break;
-      case SSL_ERROR_WANT_READ: cout << "SSL_ERROR_WANT_READ" << endl; break;
-      case SSL_ERROR_WANT_WRITE: cout << "SSL_ERROR_WANT_WRITE" << endl; break;
-      case SSL_ERROR_WANT_CONNECT: cout << "SSL_ERROR_WANT_CONNECT" << endl; break;
-      case SSL_ERROR_WANT_ACCEPT: cout << "SSL_ERROR_WANT_ACCEPT" << endl; break;
-      case SSL_ERROR_WANT_X509_LOOKUP: cout << "SSL_ERROR_WANT_X509_LOOKUP" << endl; break;
-      case SSL_ERROR_SYSCALL: cout << "SSL_ERROR_SYSCALL" << endl; break;
-      case SSL_ERROR_SSL: cout << "SSL_ERROR_SSL" << endl; break;
+    if (http->isSsl) {
+      http->ssl = SSL_new(ctx);
+      if( !SSL_set_fd(http->ssl, http->getFD()) ) {
+        log(3) << "set fd failed" << endl;
+      }
+
+      int err = SSL_accept(http->ssl);
+      if (err <= 0) {
+        log(3) << "SSL Accept Error " ;
+        int ret =  SSL_get_error(http->ssl, err);
+        switch(ret) {
+        case SSL_ERROR_NONE: cout << "SSL_ERROR_NONE" << endl; break;
+        case SSL_ERROR_ZERO_RETURN: cout << "SSL_ERROR_ZERO_RETURN" << endl; break;
+        case SSL_ERROR_WANT_READ: cout << "SSL_ERROR_WANT_READ" << endl; break;
+        case SSL_ERROR_WANT_WRITE: cout << "SSL_ERROR_WANT_WRITE" << endl; break;
+        case SSL_ERROR_WANT_CONNECT: cout << "SSL_ERROR_WANT_CONNECT" << endl; break;
+        case SSL_ERROR_WANT_ACCEPT: cout << "SSL_ERROR_WANT_ACCEPT" << endl; break;
+        case SSL_ERROR_WANT_X509_LOOKUP: cout << "SSL_ERROR_WANT_X509_LOOKUP" << endl; break;
+        case SSL_ERROR_SYSCALL: cout << "SSL_ERROR_SYSCALL" << endl; break;
+        case SSL_ERROR_SSL: cout << "SSL_ERROR_SSL" << endl; break;
+        }
       }
     }
-    http->parse_request(ssl);
 
     log(0) << "FETCH WORK END! THREAD:" << thread->tid << endl;
 
+    if (http->parse_request() < 0) {
+      http->close();
+    }
 
     // if (http->isClose()) {
     //   delete http;
@@ -761,6 +770,121 @@ void handle_sigs(int signo) {
   log(0) << "Signal(" << signo << ") is ignored" << endl;
 }
 
+
+void *http_listen (void *arg) {
+  deque<EhttpPtr> *conn_pool = (deque<EhttpPtr> *)arg;
+  int listenfd;
+
+  if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    perror("sockfd\n");
+    exit(1);
+  }
+
+  int yes = 1;
+  setsockopt(listenfd, SOL_SOCKET,SO_REUSEADDR, (void *)&yes, sizeof(int));
+
+  struct sockaddr_in srv;
+  bzero(&srv, sizeof(srv));
+  srv.sin_family = AF_INET;
+  srv.sin_addr.s_addr = htonl(INADDR_ANY);
+  srv.sin_port = htons(PORT);
+
+  if( bind(listenfd, (struct sockaddr *) &srv, sizeof(srv)) < 0) {
+    cout << "bind http port:" <<  PORT << endl;
+    exit(1);
+  }
+
+  listen(listenfd, 1024);
+
+  struct sockaddr_in client_addr;
+  socklen_t sin_size = sizeof(struct sockaddr);
+
+  log(2) << "DR Server Start! Listen..." << endl;
+  for( ; ; ) {
+    int clifd;
+    if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
+      exit(1);
+    }
+    static int linger[2] = {0,0};
+    setsockopt(clifd, SOL_SOCKET,SO_LINGER,&linger, sizeof(linger));
+    TLOCK(new_connection_mutex);
+    log(1) << "Accepted... " << clifd << "  / Queue size : " << conn_pool->size() << " / Thread: " << MAX_THREAD << endl;
+
+    EhttpPtr http = EhttpPtr(new Ehttp());
+    http->isSsl = false;
+    http->socket = clifd;
+
+    conn_pool->push_back(http);
+    TUNLOCK(new_connection_mutex);
+  }
+
+}
+
+void *https_listen (void *arg) {
+  deque<EhttpPtr> *conn_pool = (deque<EhttpPtr> *)arg;
+  int listenfd;
+
+  SSL_load_error_strings();
+  SSLeay_add_ssl_algorithms();
+  ctx=SSL_CTX_new(SSLv3_method());
+  SSL_CTX_set_default_passwd_cb(ctx, &pem_passwd_cb);
+
+  string str = key_path + "server1024.crt";
+  if ( SSL_CTX_use_certificate_file(ctx, str.c_str(), SSL_FILETYPE_PEM)<0 ) {
+    log(2) << "Can't read cert file" << endl;
+  }
+
+  str = key_path + "server1024.key";
+  if(!(SSL_CTX_use_PrivateKey_file(ctx, str.c_str(), SSL_FILETYPE_PEM))) {
+    log(2) << "Can't read key file" << endl;
+
+  }
+
+  if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    perror("sockfd\n");
+    exit(1);
+  }
+
+  int yes = 1;
+  setsockopt(listenfd, SOL_SOCKET,SO_REUSEADDR, (void *)&yes, sizeof(int));
+
+  struct sockaddr_in srv;
+  bzero(&srv, sizeof(srv));
+  srv.sin_family = AF_INET;
+  srv.sin_addr.s_addr = htonl(INADDR_ANY);
+  srv.sin_port = htons(443);
+  if( bind(listenfd, (struct sockaddr *) &srv, sizeof(srv)) < 0) {
+    perror("bind 222\n");
+    exit(1);
+  }
+
+  listen(listenfd, 8196);
+
+  struct sockaddr_in client_addr;
+  socklen_t sin_size = sizeof(struct sockaddr);
+
+  log(2) << "DR Server Start! Listen..." << endl;
+  for( ; ; ) {
+    int clifd;
+    if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
+      exit(1);
+    }
+
+    static int linger[2] = {0,0};
+    setsockopt(clifd, SOL_SOCKET,SO_LINGER,&linger, sizeof(linger));
+    TLOCK(new_connection_mutex);
+    log(1) << "Accepted... " << clifd << "  / Queue size : " << conn_pool->size() << " / Thread: " << MAX_THREAD << endl;
+
+    EhttpPtr http = EhttpPtr(new Ehttp());
+    http->isSsl = true;
+    http->socket = clifd;
+
+    conn_pool->push_back(http);
+    TUNLOCK(new_connection_mutex);
+  }
+}
+
+
 int main(int argc, char** args) {
   po::options_description desc("Allowed options");
   desc.add_options()
@@ -769,6 +893,7 @@ int main(int argc, char** args) {
     ("template_path", po::value<string>(), "template path")
     ("p", po::value<int>(), "port")
     ("save_path", po::value<string>(), "save path")
+    ("key_path", po::value<string>(), "save path")
     ;
 
   po::variables_map vm;
@@ -794,6 +919,10 @@ int main(int argc, char** args) {
     Ehttp::set_save_path(vm["save_path"].as<string>());
   }
 
+  if (vm.count("key_path")) {
+    key_path = vm["key_path"].as<string>();
+  }
+
   if (vm.count("run") == 0) {
     if (fork() != 0) {
       exit(0);
@@ -809,37 +938,19 @@ int main(int argc, char** args) {
   pidfile << getpid() << endl;
   pidfile.close();
 
-  struct sockaddr_in srv;
-  int clifd;
-
   signal(SIGPIPE, SIG_IGN);
 
   pthread_t tid_mysql;
   pthread_create(&tid_mysql, NULL, &mysql_updator, NULL);
 
-  deque<int> conn_pool;
+  deque<EhttpPtr> conn_pool;
   Thread threads[MAX_THREAD];
-
-  SSL_load_error_strings();
-  SSLeay_add_ssl_algorithms();
-  ctx=SSL_CTX_new(SSLv3_method());
-  SSL_CTX_set_default_passwd_cb(ctx, &pem_passwd_cb);
-
-  if ( SSL_CTX_use_certificate_file(ctx, "./server1024.crt",SSL_FILETYPE_PEM)<0 ) {
-    log(2) << "Can't read cert file" << endl;
-  }
-
-  if(!(SSL_CTX_use_PrivateKey_file(ctx, "./server1024.key",SSL_FILETYPE_PEM))) {
-    log(2) << "Can't read key file" << endl;
-
-  }
 
   /* create threads */
   for(int i = 0; i < MAX_THREAD; i++) {
     threads[i].conn_pool = &conn_pool;
     pthread_create(&threads[i].tid, NULL, &main_thread, (void *)&threads[i]);
   }
-
 
   pthread_t tid;
   pthread_create(&tid, NULL, &timeout_killer, NULL);
@@ -849,39 +960,15 @@ int main(int argc, char** args) {
 
   DrEpoll::get_mutable_instance().init();
 
-  if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-    perror("sockfd\n");
-    exit(1);
+  pthread_t tid_http_listen;
+  pthread_create(&tid_http_listen, NULL, &http_listen, &conn_pool);
+
+  pthread_t tid_https_listen;
+  pthread_create(&tid_https_listen, NULL, &https_listen, &conn_pool);
+
+  while(1) {
+    sleep(100);
   }
 
-  int yes = 1;
-  setsockopt(listenfd, SOL_SOCKET,SO_REUSEADDR, (void *)&yes, sizeof(int));
-
-  bzero(&srv, sizeof(srv));
-  srv.sin_family = AF_INET;
-  srv.sin_addr.s_addr = htonl(INADDR_ANY);
-  srv.sin_port = htons(PORT);
-  if( bind(listenfd, (struct sockaddr *) &srv, sizeof(srv)) < 0) {
-    perror("bind\n");
-    exit(1);
-  }
-
-  listen(listenfd, 1024);
-
-  struct sockaddr_in client_addr;
-  socklen_t sin_size = sizeof(struct sockaddr);
-
-  log(2) << "DR Server Start! Listen..." << endl;
-  for( ; ; ) {
-    if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
-      exit(1);
-    }
-    static int linger[2] = {0,0};
-    setsockopt(clifd, SOL_SOCKET,SO_LINGER,&linger, sizeof(linger));
-    TLOCK(new_connection_mutex);
-    log(1) << "Accepted... " << clifd << "  / Queue size : " << conn_pool.size() << " / Thread: " << MAX_THREAD << endl;
-    conn_pool.push_back(clifd);
-    TUNLOCK(new_connection_mutex);
-  }
   return 0;
 }
