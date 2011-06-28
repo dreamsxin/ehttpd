@@ -166,26 +166,28 @@ int login_handler(EhttpPtr obj) {
 	if (atpos != string::npos) {
 	  username = email.substr(0, atpos);
 	}
-    string padpasskey = obj->getPostParams()["padpasskey"];
+    string password = obj->getPostParams()["password"];
     string installkey = obj->getPostParams()["installkey"];
     string user_id, macaddress;
-    if (padpasskey.length() > 0 && db.login(email, padpasskey, &user_id, &macaddress)) {
+
+    if (password.empty()) {
+      password = obj->getPostParams()["padpasskey"];
+    }
+
+    if (password.length() > 0 && db.login(email, password, &user_id, &macaddress)) {
       boost::uuids::basic_random_generator<boost::mt19937> gen;
       boost::uuids::uuid u = gen();
       string sessionid = to_string(u);
-      obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid;
+      obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid + "; path=/";
       TLOCK(mutex_session);
       session[sessionid].user_id = user_id;
-	  session[sessionid].email = email;
-	  session[sessionid].username = username;
+      session[sessionid].email = email;
+      session[sessionid].username = username;
       session[sessionid].macaddress = macaddress;
       session[sessionid].timestamp = time(NULL);
       TUNLOCK(mutex_session);
 
-      if (obj->isSsl)
-        obj->out_set_file("login_ssl.json");
-      else
-        obj->out_set_file("login.json");
+      obj->out_set_file("login.json");
 
       obj->out_replace_token("macaddress", macaddress);
       obj->out_replace_token("hostname", hostname);
@@ -195,7 +197,7 @@ int login_handler(EhttpPtr obj) {
       boost::uuids::basic_random_generator<boost::mt19937> gen;
       boost::uuids::uuid u = gen();
       string sessionid = to_string(u);
-      obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid;
+      obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid + "; path=/";
       TLOCK(mutex_session);
       session[sessionid].user_id = user_id;
 	  session[sessionid].email = email;
@@ -229,10 +231,15 @@ int mac_handler(EhttpPtr obj) {
   if ((obj->getPostParams()).count("email") > 0) {
     log(0) << "POST" << endl;
     string email = obj->getPostParams()["email"];
-    string padpasskey = obj->getPostParams()["padpasskey"];
+    string password = obj->getPostParams()["password"];
+
+    if (password.empty()) {
+      password = obj->getPostParams()["padpasskey"];
+    }
+
     string installkey = obj->getPostParams()["installkey"];
     string user_id, macaddress;
-    if (padpasskey.length() > 0 && db.login(email, padpasskey, &user_id, &macaddress)) {
+    if (password.length() > 0 && db.login(email, password, &user_id, &macaddress)) {
       obj->out_set_file("mac.json");
       obj->out_replace_token("macaddress", macaddress);
       log(1) << email << " mac success" << endl;
@@ -723,6 +730,9 @@ void *main_thread(void *arg) {
     http->add_handler("/upload", upload_handler);
     http->add_handler("/request", request_handler);
     http->add_handler("/login", login_handler);
+    http->add_handler("/agent/login", login_handler);
+    http->add_handler("/mobile/login", login_handler);
+
     http->add_handler("/mac", mac_handler);
     http->add_handler("/status", status_handler);
     http->add_handler(NULL, handleDefault);
