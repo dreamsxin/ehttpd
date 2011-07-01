@@ -41,13 +41,63 @@
 
 #include "./embedhttp.h"
 #include <assert.h>
+#include <sys/poll.h>
+#include <openssl/err.h>
+#include <fcntl.h>
+
 
 string Ehttp::template_path = "./";
 string Ehttp::save_path = "./";
 
-ssize_t Ehttp::send(const void *buf, size_t len) {
+ssize_t Ehttp::send(const char *buf, size_t len) {
   if (!isSsl)
     return ::send(getFD(), buf, len, 0);
+
+ 
+  int n = 0;
+  int s = len;
+
+  while (true) {
+    n = SSL_write(ssl, buf, s);
+
+    unsigned long code = ERR_get_error();
+    if (code != 0)
+    {
+      char buffer[120];
+      if (ERR_error_string(code, buffer))
+      {
+        // log_debug("SSL-Error " << code << ": \"" << buffer << '"');
+        return -1;
+      }
+      else
+      {
+        // log_debug("unknown SSL-Error " << code);
+        return -1;
+      }
+    }
+
+      int err;
+      if (n > 0)
+      {
+        buf += n;
+        s -= n;
+      }
+      else if (n < 0
+              && (err = SSL_get_error(ssl, n)) != SSL_ERROR_WANT_READ
+              && err != SSL_ERROR_WANT_WRITE
+              && (err != SSL_ERROR_SYSCALL || errno != EAGAIN))
+      {
+        return -1;
+      }
+
+      if (s <= 0)
+        break;
+
+      // poll(err == SSL_ERROR_WANT_READ ? POLLIN : POLLIN|POLLOUT);
+    }
+
+    return len;
+
 
   ssize_t i = SSL_write((SSL*)ssl,buf,len);
   // printf("Wrote %d of %d bytes\r\n",i,len);
@@ -75,6 +125,18 @@ ssize_t Ehttp::recv(void *buf, size_t len) {
   if (!isSsl)
     return ::recv(getFD(), buf, len, 0);
 
+  int n;
+  int err;
+  // blocking
+  do {
+    // log_debug("SSL_read(" << ssl << ", buffer, " << bufsize << ") (blocking)");
+    n = ::SSL_read(ssl, buf, len);
+  } while (n <= 0 && ((err = SSL_get_error(ssl, n)) == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE));
+
+  return n; 
+
+ /*  
+
   while(1) {
     ssize_t i = SSL_read((SSL*)ssl,buf,len);
     if( i <= 0) {
@@ -92,7 +154,7 @@ ssize_t Ehttp::recv(void *buf, size_t len) {
       }
     }
     return i;
-  }
+  }*/ 
   return 0;
 }
 

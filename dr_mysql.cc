@@ -39,7 +39,7 @@ bool DrMysql::login(string const &email, string const &password,
   try{
     pthread_mutex_lock(&mutex_login);
     driver->threadInit();
-    string query = "SELECT *,password('" + password + "') as enc from co_user where email = '" + email + "'";
+    string query = "SELECT *,password('" + password + "') as enc from app_users where email = '" + email + "'";
     scoped_ptr<Statement> stmt(con->createStatement());
     scoped_ptr<ResultSet> res(stmt->executeQuery(query));
 
@@ -48,7 +48,7 @@ bool DrMysql::login(string const &email, string const &password,
     }
 
     if (password != res->getString("installkey") &&
-        res->getString("enc") != res->getString("encpassword")) {
+        res->getString("enc") != res->getString("password")) {
       throw runtime_error("Invild password");
     }
 

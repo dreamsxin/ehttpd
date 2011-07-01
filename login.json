@@ -11,7 +11,7 @@
     "mac": "##hostname##/mac"},
   "interval" : {
     "timeout": 10000,
-    "mac": 20000,
+    "mac": 200000,
     "error": 10000,
     "idle": 3000,
     "polling": 300}}}

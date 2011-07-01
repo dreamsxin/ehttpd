@@ -361,6 +361,15 @@ int execute_downloading(UploadPtr up, DownloadPtr dn) {
 }
 
 int execute_polling(RequestPtr request, PollingPtr polling) {
+
+  TLOCK(mutex_requests_key);
+  requests_key[request->key] = request;
+  TUNLOCK(mutex_requests_key);
+
+  TLOCK(mutex_queue_requests_key);
+  queue_requests_key.push(request);
+  TUNLOCK(mutex_queue_requests_key);
+
   polling->userid = request->userid;
   polling->key = request->key;
   polling->command = request->command;
@@ -379,15 +388,6 @@ int execute_polling(RequestPtr request, PollingPtr polling) {
   if (ret != 0) {  // if error
     return ret;
   }
-
-  TLOCK(mutex_requests_key);
-  requests_key[request->key] = request;
-  TUNLOCK(mutex_requests_key);
-
-  TLOCK(mutex_queue_requests_key);
-  queue_requests_key.push(request);
-  TUNLOCK(mutex_queue_requests_key);
-
   log(1) << "execute_polling: End and assign request:" << request->ehttp->getFD() << endl;
   return ret;
 }
@@ -547,6 +547,8 @@ int upload_handler(EhttpPtr obj) {
   string jsondata = obj->getPostParams()["jsondata"];
   string key = obj->getPostParams()["incrkey"];
   string command = obj->getPostParams()["command"];
+
+  log(2) << "UPLOAD HANDLER: " << key << endl;
 
   // fetch request.
   RequestPtr request;

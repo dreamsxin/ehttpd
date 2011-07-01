@@ -214,7 +214,7 @@ public:
   bool isSsl;
   int socket;
   SSL *ssl;
-  ssize_t send(const void *buf, size_t len);
+  ssize_t send(const char *buf, size_t len);
   ssize_t recv(void *buf, size_t len);
 };
 
