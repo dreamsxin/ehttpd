@@ -13,7 +13,6 @@
 
 #include "log.h"
 
-
 void *epoll_thread(void *) {
   DrEpoll::get_mutable_instance().thread();
 }
@@ -72,7 +71,7 @@ bool DrEpoll::process() {
     return false; /* return but this is epoll wait error */
   }
 
-  char buffer[1024];
+  char buffer[4096000];
   for (int i = 0 ; i < nfds ; i++) {
 
     Transfer *trans = (Transfer *)events[i].data.ptr;
@@ -81,7 +80,12 @@ bool DrEpoll::process() {
     int r1, r2;
     log(1) << "upload fd:" << trans->up->ehttp->getFD() << " dn:" << trans->dn->ehttp->getFD() << endl;
 
-    r1 = trans->up->ehttp->recv(buffer, sizeof(buffer));
+
+    int len = trans->dn->remaining;
+
+    if (len > sizeof(buffer) - 1) len = sizeof(buffer) - 1;
+
+    r1 = trans->up->ehttp->recv(buffer, len);
     if (r1 < 0) {
       log(1) << "close r1 rem:" << trans->dn->remaining << " r1: " << r1 << endl;
       epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, &(events[i]));
@@ -100,7 +104,7 @@ bool DrEpoll::process() {
       transfers.erase(trans->dn->key);
       continue;
     }
-   
+
     trans->dn->remaining -= r1;
     if (trans->dn->remaining <= 0) {
       log(1) << "remaining <= 0 : " << trans->dn->remaining << endl;

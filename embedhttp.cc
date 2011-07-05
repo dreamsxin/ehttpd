@@ -36,7 +36,7 @@
  THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
  DAMAGE.
 
- ********************************************************************/
+********************************************************************/
 
 
 #include "./embedhttp.h"
@@ -44,60 +44,108 @@
 #include <sys/poll.h>
 #include <openssl/err.h>
 #include <fcntl.h>
+#include <pthread.h>
+
+#define TLOCK(name) pthread_mutex_lock(&(name))
+#define TUNLOCK(name) pthread_mutex_unlock(&(name))
 
 
 string Ehttp::template_path = "./";
 string Ehttp::save_path = "./";
 
+pthread_mutex_t mutex_ssl = PTHREAD_MUTEX_INITIALIZER;
+
+static int checkSslError() {
+  unsigned long code = ERR_get_error();
+  if (code != 0) {
+    char buffer[120];
+    if (ERR_error_string(code, buffer)) {
+      log(2) << "SSL-Error " << code << ": \"" << buffer << '"' << endl;
+      return -1;
+    } else {
+      log(2) << "unknown SSL-Error " << code << endl;
+      return -1;
+    }
+  }
+  return 0;
+}
+
+int Ehttp::initSSL(SSL_CTX* ctx) {
+  ssl = SSL_new(ctx);
+
+  if( !SSL_set_fd(ssl, getFD()) ) {
+    log(3) << "set fd failed" << endl;
+  }
+
+  SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
+  SSL_set_mode(ssl, SSL_MODE_ENABLE_PARTIAL_WRITE |
+               SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+
+  int err;
+  if( (err=SSL_accept(ssl)) < 0 ) {
+    cout << "SSL Accept Error " << SSL_get_error(ssl,err) << endl;
+    if( (err=SSL_accept(ssl)) < 0 ) {
+      cout << "SSL Accept Error " << SSL_get_error(ssl,err) << endl;
+      return -1;
+    }
+  }
+  return 0;
+}
+
 ssize_t Ehttp::send(const char *buf, size_t len) {
   if (!isSsl)
     return ::send(getFD(), buf, len, 0);
 
- 
+  if (!ssl) return -1;
+
   int n = 0;
   int s = len;
 
+  TLOCK(mutex_ssl);
   while (true) {
     n = SSL_write(ssl, buf, s);
+    if (checkSslError() < 0) {
+      TUNLOCK(mutex_ssl);
+      return -1;
+    }
 
     unsigned long code = ERR_get_error();
-    if (code != 0)
-    {
-      char buffer[120];
-      if (ERR_error_string(code, buffer))
-      {
+    if (code != 0) {
+      char buffer[512];
+      if (ERR_error_string(code, buffer)) {
         // log_debug("SSL-Error " << code << ": \"" << buffer << '"');
+        TUNLOCK(mutex_ssl);
         return -1;
-      }
-      else
-      {
+      } else {
         // log_debug("unknown SSL-Error " << code);
+        TUNLOCK(mutex_ssl);
         return -1;
       }
     }
 
-      int err;
-      if (n > 0)
-      {
-        buf += n;
-        s -= n;
-      }
-      else if (n < 0
-              && (err = SSL_get_error(ssl, n)) != SSL_ERROR_WANT_READ
-              && err != SSL_ERROR_WANT_WRITE
-              && (err != SSL_ERROR_SYSCALL || errno != EAGAIN))
-      {
-        return -1;
-      }
-
-      if (s <= 0)
-        break;
-
-      // poll(err == SSL_ERROR_WANT_READ ? POLLIN : POLLIN|POLLOUT);
+    int err;
+    if (n > 0) {
+      buf += n;
+      s -= n;
+    } else if (n < 0
+               && (err = SSL_get_error(ssl, n)) != SSL_ERROR_WANT_READ
+               && err != SSL_ERROR_WANT_WRITE
+               && (err != SSL_ERROR_SYSCALL || errno != EAGAIN)) {
+      TUNLOCK(mutex_ssl);
+      return -1;
     }
 
-    return len;
+    if (s <= 0)
+      break;
 
+    usleep(100);
+    // poll(err == SSL_ERROR_WANT_READ ? POLLIN : POLLIN|POLLOUT);
+  }
+  TUNLOCK(mutex_ssl);
+  return len;
+
+
+  TLOCK(mutex_ssl);
 
   ssize_t i = SSL_write((SSL*)ssl,buf,len);
   // printf("Wrote %d of %d bytes\r\n",i,len);
@@ -105,37 +153,83 @@ ssize_t Ehttp::send(const char *buf, size_t len) {
   if( i <= 0) {
     switch( SSL_get_error((SSL*)ssl,i) ) {
     case SSL_ERROR_ZERO_RETURN:
+      TUNLOCK(mutex_ssl);
       return 0;
       // A 'real' nice end of data close connection
       break;
     case SSL_ERROR_WANT_WRITE:
       //Don't do this for production code
-      log(2) << "SLL ERROR _WANT WRITE" << endl;
+      // log(2) << "SLL ERROR _WANT WRITE" << endl;
+      usleep(100);
       return send(buf,len);
     default:
       //The parser doesn't care what error, just that there is one
       //so -1 is OK
+      TUNLOCK(mutex_ssl);
       return -1;
     }
   }
+  TUNLOCK(mutex_ssl);
   return i;
 }
+
+
+
 
 ssize_t Ehttp::recv(void *buf, size_t len) {
   if (!isSsl)
     return ::recv(getFD(), buf, len, 0);
 
+  if (!ssl) return -1;
+
   int n;
   int err;
-  // blocking
+
+  // try read
+
+  n = ::SSL_read(ssl, buf, len);
+
+  if (n > 0)
+    return n;
+
+  if ((err = SSL_get_error(ssl, n)) != SSL_ERROR_WANT_READ
+      && err != SSL_ERROR_WANT_WRITE)
+    if (checkSslError() < 0) return -1;
+
+  // no read, timeout > 0 - poll
   do {
-    // log_debug("SSL_read(" << ssl << ", buffer, " << bufsize << ") (blocking)");
+    usleep(100);
+
     n = ::SSL_read(ssl, buf, len);
-  } while (n <= 0 && ((err = SSL_get_error(ssl, n)) == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE));
+    if (checkSslError() < 0) return -1;
 
-  return n; 
+  } while (n < 0
+           && ((err = SSL_get_error(ssl, n)) == SSL_ERROR_WANT_READ
+               || err == SSL_ERROR_WANT_WRITE
+               || err == SSL_ERROR_SYSCALL && errno == EAGAIN));
 
- /*  
+  return n;
+
+  // blocking
+
+  TLOCK(mutex_ssl);
+  do {
+    n = ::SSL_read(ssl, buf, len);
+  } while (n <= 0 &&
+           ((err = SSL_get_error(ssl, n)) == SSL_ERROR_WANT_READ
+            || err == SSL_ERROR_WANT_WRITE));
+
+  if (checkSslError() < 0) {
+    TUNLOCK(mutex_ssl);
+    return -1;
+  }
+
+  TUNLOCK(mutex_ssl);
+  return n;
+
+
+
+  // old method
 
   while(1) {
     ssize_t i = SSL_read((SSL*)ssl,buf,len);
@@ -154,7 +248,7 @@ ssize_t Ehttp::recv(void *buf, size_t len) {
       }
     }
     return i;
-  }*/ 
+  }
   return 0;
 }
 
@@ -241,7 +335,7 @@ int Ehttp::out_replace(void) {
 
   if( !f ) {
     err=-1;
-   outbuffer="<BR>Cannot open the outfile <i>"+outfilename+"</i><BR>";
+    outbuffer="<BR>Cannot open the outfile <i>"+outfilename+"</i><BR>";
   }
   while( err== 0 && !feof(f) && f ) {
     r=fread(buffer,1,sizeof(buffer),f);
@@ -253,49 +347,49 @@ int Ehttp::out_replace(void) {
 
 
       switch( state ) {
-          // non token state
-        case 0:
-          if( c == '#' ) state=1;
-          else outbuffer+=c;
-          break;
+        // non token state
+      case 0:
+        if( c == '#' ) state=1;
+        else outbuffer+=c;
+        break;
 
-          // try to read the token start
-        case 1:
-          if( c == '#' ) {
-            token="";
-            state=2;
-          }
-          else{
-            outbuffer+='#';
-            outbuffer+=c;
-            state=0;
-          }
-          break;
-
-          // read the token key name
-        case 2:
-          if( c == '#' ) state=3;
-          else token+=c;
-          break;
-
-          // close of token name, replace the token
-        case 3:
-          if( c == '#' ) {
-            state=4;
-            outbuffer+=replace_token[token];
-            log(0) << "Replacing token [" << token << "] with [" << replace_token[token] << "]" << endl;
-            state=0;
-          } else {
-            log(2) << "(" << line << ")Token Parse Error:" << token << endl;
-            fseek(f,0,SEEK_END);
-            err=-2;
-            state=99;
-          }
-          break;
-
-        case 99:
+        // try to read the token start
+      case 1:
+        if( c == '#' ) {
+          token="";
+          state=2;
+        }
+        else{
+          outbuffer+='#';
           outbuffer+=c;
-          break;
+          state=0;
+        }
+        break;
+
+        // read the token key name
+      case 2:
+        if( c == '#' ) state=3;
+        else token+=c;
+        break;
+
+        // close of token name, replace the token
+      case 3:
+        if( c == '#' ) {
+          state=4;
+          outbuffer+=replace_token[token];
+          log(0) << "Replacing token [" << token << "] with [" << replace_token[token] << "]" << endl;
+          state=0;
+        } else {
+          log(2) << "(" << line << ")Token Parse Error:" << token << endl;
+          fseek(f,0,SEEK_END);
+          err=-2;
+          state=99;
+        }
+        break;
+
+      case 99:
+        outbuffer+=c;
+        break;
       }
     }
   }
@@ -305,10 +399,10 @@ int Ehttp::out_replace(void) {
 
 
 int Ehttp::out_commit_binary(void) {
-    int err = 0;
-    FILE *f = fopen(outfilename.c_str(), "rb");
-    char buffer[10240];
-    if (f) {
+  int err = 0;
+  FILE *f = fopen(outfilename.c_str(), "rb");
+  char buffer[10240];
+  if (f) {
     while(!feof(f)) {
       int r = fread(buffer, 1, sizeof(10240), f);
       if (r > 0) {
@@ -438,38 +532,38 @@ int Ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
   // run through the string and pick off the parms as we see them
   for (unsigned int i=0; i < remainder.length();) {
     switch (state) {
-      case 0:
-        id = "";
-        value = "";
-        state = 1;
+    case 0:
+      id = "";
+      value = "";
+      state = 1;
+      break;
+    case 1:
+      switch (remainder[i]) {
+      case '=':
+        state = 2;
         break;
-      case 1:
-        switch (remainder[i]) {
-          case '=':
-            state = 2;
-            break;
-          default:
-            id += remainder[i];
-            break;
-        }
-        i++;
+      default:
+        id += remainder[i];
         break;
-      case 2:
-        switch (remainder[i]) {
-          case '&':
-            unescape(&id);
-            unescape(&value);
-            parms[id] = value;
-            global_parms[id] = value;
-            log(0) << "Added " << id << " to " << value << endl;
-            state = 0;
-            break;
-          default:
-            value += remainder[i];
-            break;
-        }
-        i++;
+      }
+      i++;
+      break;
+    case 2:
+      switch (remainder[i]) {
+      case '&':
+        unescape(&id);
+        unescape(&value);
+        parms[id] = value;
+        global_parms[id] = value;
+        log(0) << "Added " << id << " to " << value << endl;
+        state = 0;
         break;
+      default:
+        value += remainder[i];
+        break;
+      }
+      i++;
+      break;
     }
   }
   // Add non-nil value to parm list
@@ -804,7 +898,18 @@ int Ehttp::isClose() {
 }
 
 void Ehttp::close() {
+  if (fdState == 1) {
+    log(0) << "Connection closed already... (" << getFD() << ")" << endl;
+    return;
+  }
+
+  log(1) << "Connection close... (" << getFD() << ")" << endl;
+  ::shutdown(getFD(), SHUT_RDWR);
+  ::close(getFD());
+  fdState = 1;
+
   if (isSsl) {
+    /*
     switch( SSL_shutdown(ssl) ) {
     case 1:
       // Shutdown complete
@@ -827,18 +932,14 @@ void Ehttp::close() {
 
     default:
       break;
+    }*/
+
+    if (ssl) {
+      SSL_shutdown(ssl);
+      SSL_free(ssl);
+      ssl = NULL;
     }
   }
-
-  if (fdState == 1) {
-    log(0) << "Connection closed already... (" << getFD() << ")" << endl;
-    return;
-  }
-
-  log(1) << "Connection close... (" << getFD() << ")" << endl;
-  ::shutdown(getFD(), SHUT_RDWR);
-  ::close(getFD());
-  fdState = 1;
 }
 
 int Ehttp::error(const string &error_message) {
@@ -863,11 +964,13 @@ int Ehttp::timeout() {
 }
 
 int Ehttp::uploadend() {
-  log(2) << "upload end (" << getFD() << ")" << endl;
-  out_set_file("request.json");
-  out_replace_token("jsondata", "\"\"");
-  out_replace();
-  out_commit();
-  close();
+  if (!isClose()) {
+    log(2) << "upload end (" << getFD() << ")" << endl;
+    out_set_file("request.json");
+    out_replace_token("jsondata", "\"\"");
+    out_replace();
+    out_commit();
+    close();
+  }
   return EHTTP_ERR_GENERIC;
 }

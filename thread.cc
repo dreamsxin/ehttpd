@@ -740,28 +740,13 @@ void *main_thread(void *arg) {
     http->add_handler(NULL, handleDefault);
 
     if (http->isSsl) {
-      http->ssl = SSL_new(ctx);
-      if( !SSL_set_fd(http->ssl, http->getFD()) ) {
-        log(3) << "set fd failed" << endl;
-      }
-
-      int err = SSL_accept(http->ssl);
-      if (err <= 0) {
-        log(3) << "SSL Accept Error " ;
-        int ret =  SSL_get_error(http->ssl, err);
-        switch(ret) {
-        case SSL_ERROR_NONE: cout << "SSL_ERROR_NONE" << endl; break;
-        case SSL_ERROR_ZERO_RETURN: cout << "SSL_ERROR_ZERO_RETURN" << endl; break;
-        case SSL_ERROR_WANT_READ: cout << "SSL_ERROR_WANT_READ" << endl; break;
-        case SSL_ERROR_WANT_WRITE: cout << "SSL_ERROR_WANT_WRITE" << endl; break;
-        case SSL_ERROR_WANT_CONNECT: cout << "SSL_ERROR_WANT_CONNECT" << endl; break;
-        case SSL_ERROR_WANT_ACCEPT: cout << "SSL_ERROR_WANT_ACCEPT" << endl; break;
-        case SSL_ERROR_WANT_X509_LOOKUP: cout << "SSL_ERROR_WANT_X509_LOOKUP" << endl; break;
-        case SSL_ERROR_SYSCALL: cout << "SSL_ERROR_SYSCALL" << endl; break;
-        case SSL_ERROR_SSL: cout << "SSL_ERROR_SSL" << endl; break;
-        }
+      if (http->initSSL(ctx) < 0) {
+        log(2) << "INIT SSL ERROR" << endl;
+        http->close();
       }
     }
+
+    // nonblock(http->getFD());
 
     log(0) << "FETCH WORK END! THREAD:" << thread->tid << endl;
 
@@ -836,9 +821,17 @@ void *https_listen (void *arg) {
   deque<EhttpPtr> *conn_pool = (deque<EhttpPtr> *)arg;
   int listenfd;
 
-  SSL_load_error_strings();
+  /*SSL_load_error_strings();
   SSLeay_add_ssl_algorithms();
   ctx=SSL_CTX_new(SSLv3_method());
+  SSL_library_init();*/
+
+  SSL_library_init();;
+  SSL_load_error_strings();
+  ctx = SSL_CTX_new(SSLv23_method());
+
+  SSL_CTX_set_mode(ctx, SSL_MODE_ENABLE_PARTIAL_WRITE  | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+
   SSL_CTX_set_default_passwd_cb(ctx, &pem_passwd_cb);
 
   string str = key_path + "server1024.crt";
@@ -849,7 +842,6 @@ void *https_listen (void *arg) {
   str = key_path + "server1024.key";
   if(!(SSL_CTX_use_PrivateKey_file(ctx, str.c_str(), SSL_FILETYPE_PEM))) {
     log(2) << "Can't read key file" << endl;
-
   }
 
   if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {

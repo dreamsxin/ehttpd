@@ -78,7 +78,7 @@ enum{
 };
 
 
-#define INPUT_BUFFER_SIZE 10240
+#define INPUT_BUFFER_SIZE 4096
 
 /*
  Class: ehttp
@@ -143,6 +143,9 @@ public:
   int unescape(string *str);
   int addslash(string *str);
   int parse_cookie(string &cookie_string);
+
+  int initSSL(SSL_CTX* ctx);
+  BIO                     *as_sbio;
 
   Ehttp(){
     ssl = NULL;
