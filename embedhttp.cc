@@ -71,10 +71,13 @@ static int checkSslError() {
 }
 
 int Ehttp::initSSL(SSL_CTX* ctx) {
+  TLOCK(mutex_ssl);
   ssl = SSL_new(ctx);
 
   if( !SSL_set_fd(ssl, getFD()) ) {
-    log(3) << "set fd failed" << endl;
+    log(2) << "set fd failed" << endl;
+    TUNLOCK(mutex_ssl);
+    return -1;
   }
 
   SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
@@ -83,12 +86,14 @@ int Ehttp::initSSL(SSL_CTX* ctx) {
 
   int err;
   if( (err=SSL_accept(ssl)) < 0 ) {
-    cout << "SSL Accept Error " << SSL_get_error(ssl,err) << endl;
+    log(2) << "SSL Accept Error " << SSL_get_error(ssl,err) << endl;
     if( (err=SSL_accept(ssl)) < 0 ) {
-      cout << "SSL Accept Error " << SSL_get_error(ssl,err) << endl;
+      log(2) << "SSL Accept Error " << SSL_get_error(ssl,err) << endl;
+      TUNLOCK(mutex_ssl);
       return -1;
     }
   }
+  TUNLOCK(mutex_ssl);
   return 0;
 }
 

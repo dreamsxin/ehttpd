@@ -743,6 +743,7 @@ void *main_thread(void *arg) {
       if (http->initSSL(ctx) < 0) {
         log(2) << "INIT SSL ERROR" << endl;
         http->close();
+        continue;
       }
     }
 
