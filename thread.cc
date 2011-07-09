@@ -724,7 +724,15 @@ void *main_thread(void *arg) {
       }
       TUNLOCK(new_connection_mutex);
     }
-    log(0) << "FETCH END! THREAD:" << thread->tid << endl;
+    log(1) << "FETCH END! THREAD:" << thread->tid << endl;
+
+    if (http->isSsl) {
+      if (http->initSSL(ctx) < 0) {
+        log(2) << "INIT SSL ERROR" << endl;
+        http->close();
+        continue;
+      }
+    }
 
     // job
     http->init();
@@ -739,17 +747,9 @@ void *main_thread(void *arg) {
     http->add_handler("/status", status_handler);
     http->add_handler(NULL, handleDefault);
 
-    if (http->isSsl) {
-      if (http->initSSL(ctx) < 0) {
-        log(2) << "INIT SSL ERROR" << endl;
-        http->close();
-        continue;
-      }
-    }
-
     // nonblock(http->getFD());
 
-    log(0) << "FETCH WORK END! THREAD:" << thread->tid << endl;
+    log(1) << "FETCH WORK END! THREAD:" << thread->tid << endl;
 
     if (http->parse_request() < 0) {
       http->close();
@@ -806,7 +806,7 @@ void *http_listen (void *arg) {
     static int linger[2] = {0,0};
     setsockopt(clifd, SOL_SOCKET,SO_LINGER,&linger, sizeof(linger));
     TLOCK(new_connection_mutex);
-    log(1) << "Accepted... " << clifd << "  / Queue size : " << conn_pool->size() << " / Thread: " << MAX_THREAD << endl;
+    log(1) << "Http Accepted... " << clifd << "  / Queue size : " << conn_pool->size() << " / Thread: " << MAX_THREAD << endl;
 
     EhttpPtr http = EhttpPtr(new Ehttp());
     http->isSsl = false;
@@ -878,7 +878,7 @@ void *https_listen (void *arg) {
     static int linger[2] = {0,0};
     setsockopt(clifd, SOL_SOCKET,SO_LINGER,&linger, sizeof(linger));
     TLOCK(new_connection_mutex);
-    log(1) << "Accepted... " << clifd << "  / Queue size : " << conn_pool->size() << " / Thread: " << MAX_THREAD << endl;
+    log(1) << "Https Accepted... " << clifd << "  / Queue size : " << conn_pool->size() << " / Thread: " << MAX_THREAD << endl;
 
     EhttpPtr http = EhttpPtr(new Ehttp());
     http->isSsl = true;

@@ -148,34 +148,6 @@ ssize_t Ehttp::send(const char *buf, size_t len) {
   }
   TUNLOCK(mutex_ssl);
   return len;
-
-
-  TLOCK(mutex_ssl);
-
-  ssize_t i = SSL_write((SSL*)ssl,buf,len);
-  // printf("Wrote %d of %d bytes\r\n",i,len);
-  // Handle OpenSSL quirks
-  if( i <= 0) {
-    switch( SSL_get_error((SSL*)ssl,i) ) {
-    case SSL_ERROR_ZERO_RETURN:
-      TUNLOCK(mutex_ssl);
-      return 0;
-      // A 'real' nice end of data close connection
-      break;
-    case SSL_ERROR_WANT_WRITE:
-      //Don't do this for production code
-      // log(2) << "SLL ERROR _WANT WRITE" << endl;
-      usleep(100);
-      return send(buf,len);
-    default:
-      //The parser doesn't care what error, just that there is one
-      //so -1 is OK
-      TUNLOCK(mutex_ssl);
-      return -1;
-    }
-  }
-  TUNLOCK(mutex_ssl);
-  return i;
 }
 
 
@@ -231,30 +203,6 @@ ssize_t Ehttp::recv(void *buf, size_t len) {
 
   TUNLOCK(mutex_ssl);
   return n;
-
-
-
-  // old method
-
-  while(1) {
-    ssize_t i = SSL_read((SSL*)ssl,buf,len);
-    if( i <= 0) {
-      int err = SSL_get_error((SSL*)ssl,i);
-      if (err == SSL_ERROR_ZERO_RETURN) {
-        // A 'real' nice end of data close connection
-        return 0;
-      } else if (err == SSL_ERROR_WANT_READ) {
-        log(2) << "SLL ERROR _WANT READ" << endl;
-        continue;
-      } else {
-        //The parser doesn't care what error, just that there is one
-        //so -1 is OK
-        return -1;
-      }
-    }
-    return i;
-  }
-  return 0;
 }
 
 
