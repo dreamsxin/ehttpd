@@ -98,6 +98,10 @@ int Ehttp::initSSL(SSL_CTX* ctx) {
 }
 
 ssize_t Ehttp::send(const char *buf, size_t len) {
+  if (isClose()) {
+    return -1;
+  }
+
   if (!isSsl)
     return ::send(getFD(), buf, len, 0);
 
@@ -146,6 +150,10 @@ ssize_t Ehttp::send(const char *buf, size_t len) {
 
 
 ssize_t Ehttp::recv(void *buf, size_t len) {
+  if (isClose()) {
+    return -1;
+  }
+
   if (!isSsl)
     return ::recv(getFD(), buf, len, 0);
 
