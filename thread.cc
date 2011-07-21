@@ -106,8 +106,8 @@ int nonblock(int fd, int nblockFlag = 1) {
 }
 
 void loginFail (EhttpPtr obj) {
-  obj->out_set_file("errormessage.json");
-  obj->out_replace_token("fail","Session is closed. Please sign in.");
+  obj->out_set_file("sessionerror.json");
+  obj->out_replace_token("fail", "Session is closed. Please sign in.");
   obj->out_replace();
   obj->out_commit();
   obj->close();
@@ -261,6 +261,7 @@ int mac_handler(EhttpPtr obj) {
 }
 
 void saveToFile(UploadPtr up, const char *buffer, int r) {
+  return;
   string &key = up->key;
   size_t found = key.find("-");
   if (found == string::npos) {
@@ -792,7 +793,7 @@ void *http_listen (void *arg) {
     exit(1);
   }
 
-  listen(listenfd, 1024);
+  listen(listenfd, 4096);
 
   struct sockaddr_in client_addr;
   socklen_t sin_size = sizeof(struct sockaddr);

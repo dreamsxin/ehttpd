@@ -71,12 +71,12 @@ static int checkSslError() {
 }
 
 int Ehttp::initSSL(SSL_CTX* ctx) {
-  TLOCK(mutex_ssl);
+  // TLOCK(mutex_ssl);
   ssl = SSL_new(ctx);
 
   if( !SSL_set_fd(ssl, getFD()) ) {
     log(2) << "set fd failed" << endl;
-    TUNLOCK(mutex_ssl);
+    // TUNLOCK(mutex_ssl);
     return -1;
   }
 
@@ -89,11 +89,11 @@ int Ehttp::initSSL(SSL_CTX* ctx) {
     log(2) << "SSL Accept Error " << SSL_get_error(ssl,err) << endl;
     if( (err=SSL_accept(ssl)) < 0 ) {
       log(2) << "SSL Accept Error " << SSL_get_error(ssl,err) << endl;
-      TUNLOCK(mutex_ssl);
+      // TUNLOCK(mutex_ssl);
       return -1;
     }
   }
-  TUNLOCK(mutex_ssl);
+  // TUNLOCK(mutex_ssl);
   return 0;
 }
 
@@ -106,11 +106,9 @@ ssize_t Ehttp::send(const char *buf, size_t len) {
   int n = 0;
   int s = len;
 
-  TLOCK(mutex_ssl);
   while (true) {
     n = SSL_write(ssl, buf, s);
     if (checkSslError() < 0) {
-      TUNLOCK(mutex_ssl);
       return -1;
     }
 
@@ -119,11 +117,9 @@ ssize_t Ehttp::send(const char *buf, size_t len) {
       char buffer[512];
       if (ERR_error_string(code, buffer)) {
         // log_debug("SSL-Error " << code << ": \"" << buffer << '"');
-        TUNLOCK(mutex_ssl);
         return -1;
       } else {
         // log_debug("unknown SSL-Error " << code);
-        TUNLOCK(mutex_ssl);
         return -1;
       }
     }
@@ -136,7 +132,6 @@ ssize_t Ehttp::send(const char *buf, size_t len) {
                && (err = SSL_get_error(ssl, n)) != SSL_ERROR_WANT_READ
                && err != SSL_ERROR_WANT_WRITE
                && (err != SSL_ERROR_SYSCALL || errno != EAGAIN)) {
-      TUNLOCK(mutex_ssl);
       return -1;
     }
 
@@ -146,11 +141,8 @@ ssize_t Ehttp::send(const char *buf, size_t len) {
     usleep(100);
     // poll(err == SSL_ERROR_WANT_READ ? POLLIN : POLLIN|POLLOUT);
   }
-  TUNLOCK(mutex_ssl);
   return len;
 }
-
-
 
 
 ssize_t Ehttp::recv(void *buf, size_t len) {
@@ -189,7 +181,6 @@ ssize_t Ehttp::recv(void *buf, size_t len) {
 
   // blocking
 
-  TLOCK(mutex_ssl);
   do {
     n = ::SSL_read(ssl, buf, len);
   } while (n <= 0 &&
@@ -197,11 +188,9 @@ ssize_t Ehttp::recv(void *buf, size_t len) {
             || err == SSL_ERROR_WANT_WRITE));
 
   if (checkSslError() < 0) {
-    TUNLOCK(mutex_ssl);
     return -1;
   }
 
-  TUNLOCK(mutex_ssl);
   return n;
 }
 
