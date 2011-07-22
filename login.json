@@ -2,7 +2,7 @@
 "messages":"success",
 "macaddress":"##macaddress##",
 "jsondata" :  {
-  "filelist" : ["hwp","doc","docx","xls","xlsx","ppt","pptx","pdf","rtf","gul","gif","jpg","png","mp3","wav","txt","key","dwg"],
+  "filelist" : ["hwp","doc","docx","xls","xlsx","ppt","pptx","pdf","rtf","gul","gif","jpg","png","mp3","wav","txt","key","dwg","mp4"],
   "requesturl" : {
     "command": "##hostname##/request",
     "polling": "##hostname##/polling",

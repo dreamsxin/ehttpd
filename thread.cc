@@ -512,6 +512,10 @@ int polling_handler(EhttpPtr obj) {
     request = requests[userid];
     requests.erase(userid);
   } else {
+    if (pollings.count(userid) > 0) {
+      pollings[userid]->ehttp->timeout();
+      pollings.erase(userid);
+    }
     pollings[userid] = polling;
   }
   TUNLOCK(mutex_requests);
@@ -691,6 +695,8 @@ void *timeout_killer(void *arg) {
       log(1) << "### " << ptr->ehttp->timestamp << " + " << timeout_sec_default << " <=? " << now << endl;
       if (ptr->ehttp->timestamp + timeout_sec_requests_key <= now) {
         queue_requests_key.pop();
+
+        /*
         if (!ptr.unique()) {
           TLOCK(mutex_requests_key);
           log(1) << "erase req key " << ptr->key << endl;
@@ -699,7 +705,14 @@ void *timeout_killer(void *arg) {
         } else {
           log(1) << "call ehttp timeout " << endl;
           ptr->ehttp->timeout();
-        }
+          }*/
+
+        TLOCK(mutex_requests_key);
+        log(1) << "erase req key " << ptr->key << endl;
+        ptr->ehttp->timeout();
+        requests_key.erase(ptr->key);
+        TUNLOCK(mutex_requests_key);
+
       } else {
         break;
       }

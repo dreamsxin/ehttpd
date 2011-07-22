@@ -893,12 +893,14 @@ void Ehttp::close() {
 }
 
 int Ehttp::error(const string &error_message) {
-  log(2) << error_message << "(" << getFD() << ")" << endl;
-  out_set_file("errormessage.json");
-  out_replace_token("fail", error_message);
-  out_replace();
-  out_commit();
-  close();
+  if (!isClose()) {
+    log(2) << error_message << "(" << getFD() << ")" << endl;
+    out_set_file("errormessage.json");
+    out_replace_token("fail", error_message);
+    out_replace();
+    out_commit();
+    close();
+  }
   return EHTTP_ERR_GENERIC;
 }
 
