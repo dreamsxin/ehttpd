@@ -253,11 +253,14 @@ int mac_handler(EhttpPtr obj) {
       string msg = user_id + " mac fail";
       return obj->error(msg);
     }
+  
+    obj->out_replace();
+    int ret = obj->out_commit();
+    obj->close();
+    return ret;
+  } else {
+    return obj->error("No email");
   }
-  obj->out_replace();
-  int ret = obj->out_commit();
-  obj->close();
-  return ret;
 }
 
 void saveToFile(UploadPtr up, const char *buffer, int r) {
