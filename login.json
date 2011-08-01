@@ -10,8 +10,8 @@
     "download": "##hostname##/download",
     "mac": "##hostname##/mac"},
   "interval" : {
-    "timeout": 15000,
-    "mac": 200000,
+    "timeout": 19000,
+    "mac": 300000,
     "error": 10000,
     "idle": 3000,
-    "polling": 300}}}
+    "polling": 500}}}
