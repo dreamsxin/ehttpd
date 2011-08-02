@@ -2,7 +2,7 @@
 #
 # drserver     Startup script for the DirectReader Server
 #
-# description: Startup script for the DirectReader Server
+# description: 
 # processname: drserver
 # pidfile: /home/bigeye/tmp/drserver.pid
 
@@ -13,53 +13,100 @@ drserver=${DRSERVER-/home/bigeye/workspace/ehttpd/bin/drserver}
 pidfile=${PIDFILE-/var/drserver/drserver.pid}
 lockfile=${LOCKFILE-/var/drserver/drserver.lock}
 logfile=${LOGFILE-/var/drserver/drserver.log}
+drhostname=${drHOSTNAME-krdev.directreader.net}
+template=${TEMPLATE-/home/bigeye/workspace/ehttpd/}
+savepath=${SAVEPATH-/drserver/}
 
 RETVAL=0
 
 start() {
-    echo -n $"Starting $prog: "
-    if [ ! /var/drserver/ ]; then
-	mkdir /var/drserver
-    fi
-    $drserver > $logfile 2>&1
-    RETVAL=$?
-    [ $RETVAL = 0 ] && success; touch ${lockfile} || failure
-    echo
-    return $RETVAL
+        echo -n $"Starting $prog: "
+	if [ ! -d /var/drserver/ ]; then
+	    mkdir /var/drserver
+	fi
+
+	if [ -f $lockfile ]; then
+	    failure
+	    echo
+        return $RETVAL
+	fi
+	$drserver --h ${drhostname} --template_path ${template} --p 80 --save_path ${savepath} >> $logfile 2>&1
+        RETVAL=$?
+        if [ $RETVAL = 0 ]; then
+	    success
+	    echo
+	    touch ${lockfile}
+	else
+	    failure
+	    echo
+	fi
+        return $RETVAL
 }
 
 stop() {
-    echo -n $"Stopping $prog: "
-    pid=`head -n 1 ${pidfile} 2>/dev/null`
-    if [ x"$pid" = x"" ]; then
-	failure;echo
-	exit 1
-    fi
-    kill -9 ${pid} 1>/dev/null 2>/dev/null
-    RETVAL=$?
-    [ $RETVAL = 0 ] && success; rm -f ${lockfile} ${pidfile} 1>/dev/null 2>/dev/null || failure
-    echo
+	echo -n $"Stopping $prog: "
+	pid=`head -n 1 ${pidfile} 2>/dev/null`
+	if [ x"$pid" = x"" ]; then
+	    failure;echo
+	    exit 1
+	fi
+	kill -9 ${pid} 1>/dev/null 2>/dev/null
+
+        RETVAL=$?
+        if [ $RETVAL = 0 ]; then
+	    success
+	    echo
+	    rm -f ${lockfile} ${pidfile} 1>/dev/null 2>/dev/null 
+	else
+	    failure
+	    echo
+	fi
+	return $RETVAL
 }
 
-if [ ! `whoami` = root ]; then
-    echo "ERROR... You are not root!"
-    exit 1;
-fi
+check_and_start() {
+	echo -n $"Checking $prog: "
+	pid=`head -n 1 ${pidfile} 2>/dev/null`
+	if [ x"$pid" = x"" ]; then
+		mv ${logfile} ${logfile}_`date +"%m-%d-%y-%T"`
+		failure
+		echo
+		rm -f ${lockfile} ${pidfile} 1>/dev/null 2>/dev/null
+		start
+		exit 1
+	fi
+	c=$(ps ${pid} | wc -l)
+	if [[ "$c" -eq 2 ]]
+	then
+		success
+		echo
+		exit 1
+	fi
+	mv ${logfile} ${logfile}_`date +"%m-%d-%y-%T"`
+	rm -f ${lockfile} ${pidfile} 1>/dev/null 2>/dev/null
+	failure
+	echo
+	start
+}
+
 
 # See how we were called.
 case "$1" in
-    start)
+  start)
 	start
 	;;
-    stop)
+  stop)
 	stop
 	;;
-    restart)
+  restart)
 	stop
 	start
 	;;
-    *)
-	echo $"Usage: $prog {start|stop|restart}"
+  check_and_start)
+	check_and_start
+	;;
+  *)
+	echo $"Usage: $prog {start|stop|restart|check_and_start}"
 	exit 1
 esac
 
