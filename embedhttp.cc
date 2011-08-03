@@ -40,6 +40,7 @@
 
 
 #include "./embedhttp.h"
+#include "./log.h"
 #include <assert.h>
 #include <sys/poll.h>
 #include <openssl/err.h>
@@ -380,7 +381,7 @@ int Ehttp::out_commit(int header) {
   int w;
   int err = 0;
 
-  log(1) << "Outbuffer before outcommit [[[" << outbuffer << "]]]" << endl;
+  log(0) << "Outbuffer before outcommit [[[" << outbuffer << "]]]" << endl;
   if( filetype == EHTTP_BINARY_FILE) {
     return out_commit_binary();
   }
@@ -451,7 +452,7 @@ int Ehttp::read_header(string *header) {
   while((offset = header->find("\r\n\r\n")) == string::npos) {
     int r = recv(buffer, INPUT_BUFFER_SIZE - 1);
 
-    log(0) << "read_header("<<getFD()<<") r:" << r << "/fdState : " << fdState << endl;
+    log(0) << "read_header r:" << r << "/fdState : " << fdState << endl;
 
     if(r <= 0 || fdState == 1) {
       return EHTTP_ERR_GENERIC;
@@ -605,8 +606,7 @@ int Ehttp::parse_header(string &header) {
   case EHTTP_REQUEST_PUT: request_string_type = "PUT"; break;
   default: request_string_type = "DEFAULT";
   }
-  log(2) << "URL: " << filename << " [" << request_string_type << "]"
-         << " (" << getFD() << ")" << endl;
+  log(0) << "URL: " << filename << " [" << request_string_type << "]" << endl;
 
   // Save the complete URL
   url=filename;
@@ -784,16 +784,16 @@ int Ehttp::parse_request() {
 
   if(read_header(&header) != EHTTP_ERR_OK) {
     // non socket
-    // log(2) << "FD: " << getFD() << " " << "Error parsing request" << endl;
+    // log(2) << "Error parsing request" << endl;
     return EHTTP_ERR_GENERIC;
   }
 
   if(parse_header(header) != EHTTP_ERR_OK) {
-    log(2) << "FD: " << getFD() << " " << "Error parsing request" << endl;
+    log(2) << "Error parsing request" << endl;
     return EHTTP_ERR_GENERIC;
   }
 
-  log(0) << "FD:" << getFD() << " if(requesttyp ..." << endl;
+  log(0) << " if(requesttyp ..." << endl;
 
   log(0) << filename << endl;
   if(filename == "/upload" && global_parms["command"] == "getfile") {
@@ -812,19 +812,19 @@ int Ehttp::parse_request() {
   //   return out_commit(EHTTP_LENGTH_REQUIRED);
   // }
 
-  log(0) << "FD:" << getFD() << " out_buffer_clear" << endl;
+  log(0) << " out_buffer_clear" << endl;
 
   //Call the default handler if we didn't get the filename
   out_buffer_clear();
 
-  log(0) << "FD:" << getFD() << " pPreRequestHandler" << endl;
+  log(0) << " pPreRequestHandler" << endl;
   if( pPreRequestHandler ) pPreRequestHandler( shared_from_this() );
   if( !filename.length() ) {
     log(2) << __LINE__ << " Call default handler no filename" << endl;
     return pDefaultHandler( shared_from_this() );
   }
 
-  log(0) << "FD:" << getFD() << " pHandler=handler_map[filename]" << endl;
+  log(0) << " pHandler=handler_map[filename]" << endl;
 
   //Lookup the handler function fo this filename
   pHandler=handler_map[filename];
@@ -834,7 +834,7 @@ int Ehttp::parse_request() {
     return pDefaultHandler( shared_from_this() );
   }
 
-  log(0) << "FD:" << getFD() << " pHandler( shared_from_this() " << endl;
+  log(0) << " pHandler( shared_from_this() " << endl;
   log(0) << __LINE__ << " Call user handler" << endl;
   return pHandler( shared_from_this() );
 }
@@ -849,11 +849,11 @@ int Ehttp::isClose() {
 
 void Ehttp::close() {
   if (fdState == 1) {
-    log(0) << "Connection closed already... (" << getFD() << ")" << endl;
+    log(0) << "Connection closed already... "<< endl;
     return;
   }
 
-  log(1) << "Connection close... (" << getFD() << ")" << endl;
+  log(0) << "Connection close... " << endl;
   ::shutdown(getFD(), SHUT_RDWR);
   ::close(getFD());
   fdState = 1;
@@ -894,7 +894,7 @@ void Ehttp::close() {
 
 int Ehttp::error(const string &error_message) {
   if (!isClose()) {
-    log(2) << error_message << "(" << getFD() << ")" << endl;
+    log(2) << error_message << endl;
     out_set_file("errormessage.json");
     out_replace_token("fail", error_message);
     out_replace();
@@ -906,7 +906,7 @@ int Ehttp::error(const string &error_message) {
 
 int Ehttp::timeout() {
   if (!isClose()) {
-    log(0) << "timeout (" << getFD() << ")" << endl;
+    log(0) << "timeout " << endl;
     out_set_file("timeout.json");
     out_replace();
     out_commit();
@@ -917,7 +917,7 @@ int Ehttp::timeout() {
 
 int Ehttp::uploadend() {
   if (!isClose()) {
-    log(2) << "upload end (" << getFD() << ")" << endl;
+    log(0) << "upload end " << endl;
     out_set_file("request.json");
     out_replace_token("jsondata", "\"\"");
     out_replace();
@@ -925,4 +925,12 @@ int Ehttp::uploadend() {
     close();
   }
   return EHTTP_ERR_GENERIC;
+}
+
+ostream & Ehttp::log(int debuglevel) {
+  if (username == "")
+    debuglevel = -1;
+  ostream& out = ::log(debuglevel);
+  out << "[" << username << "] (" << getFD() << ") ";
+  return out;
 }

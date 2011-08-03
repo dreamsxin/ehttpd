@@ -106,6 +106,7 @@ int nonblock(int fd, int nblockFlag = 1) {
 }
 
 void loginFail (EhttpPtr obj) {
+  obj->log(1) << "Login Fail In" << endl;
   obj->out_set_file("sessionerror.json");
   obj->out_replace_token("fail", "Session is closed. Please sign in.");
   obj->out_replace();
@@ -135,12 +136,14 @@ string get_username_from_session(EhttpPtr obj) {
   string session_id = obj->ptheCookie["SESSIONID"];
   TLOCK(mutex_session);
   string userid = session[session_id].username;
+  obj->username = userid;
   session[session_id].timestamp = time(NULL);
   TUNLOCK(mutex_session);
   return userid;
 }
 
 int status_handler (EhttpPtr obj) {
+  log(1) << "Status Handler In" << endl;
   obj->out_set_file("stringtemplate.json");
   stringstream ss;
   ss  << "requestCallCount:" << request_call_count << " ";
@@ -157,9 +160,10 @@ int status_handler (EhttpPtr obj) {
 }
 
 int login_handler(EhttpPtr obj) {
-  log(1) << "Login Handler called" << endl;
+  log(1) << "Login Handler In" << endl;
+  obj->log(1) << "Login Handler called" << endl;
   if ((obj->getPostParams()).count("email") > 0) {
-    log(0) << "POST" << endl;
+    obj->log(0) << "POST" << endl;
     string email = obj->getPostParams()["email"];
 	size_t atpos = email.find("@");
 	string username = email;
@@ -183,6 +187,7 @@ int login_handler(EhttpPtr obj) {
       session[sessionid].user_id = user_id;
       session[sessionid].email = email;
       session[sessionid].username = username;
+      obj->username = username;
       session[sessionid].macaddress = macaddress;
       session[sessionid].timestamp = time(NULL);
       TUNLOCK(mutex_session);
@@ -191,7 +196,7 @@ int login_handler(EhttpPtr obj) {
 
       obj->out_replace_token("macaddress", macaddress);
       obj->out_replace_token("hostname", hostname);
-      log(1) << email << " login success" << endl;
+      obj->log(1) << email << " login success" << endl;
 
     } else if (installkey.length() > 0 && db.login(email, installkey, &user_id, &macaddress)) {
       boost::uuids::basic_random_generator<boost::mt19937> gen;
@@ -200,28 +205,29 @@ int login_handler(EhttpPtr obj) {
       obj->getResponseHeader()["Set-Cookie"] = "SESSIONID=" + sessionid + "; path=/";
       TLOCK(mutex_session);
       session[sessionid].user_id = user_id;
-	  session[sessionid].email = email;
-	  session[sessionid].username = username;
+      session[sessionid].email = email;
+      session[sessionid].username = username;
+      obj->username = username;
       session[sessionid].macaddress = macaddress;
       session[sessionid].timestamp = time(NULL);
       TUNLOCK(mutex_session);
       obj->out_set_file("login.json");
       obj->out_replace_token("macaddress", macaddress);
       obj->out_replace_token("hostname", hostname);
-      log(1) << email << " login success" << endl;
+      obj->log(1) << email << " login success" << endl;
     } else {
       string msg = user_id + " login fail";
       return obj->error(msg);
     }
-    //    log(0) << "mac : " << macaddress << endl;
+    //    obj->log(0) << "mac : " << macaddress << endl;
   } else {
-    log(0) << "GET" << endl;
+    obj->log(0) << "GET" << endl;
     obj->out_set_file("login_page.html");
   }
   obj->out_replace();
   int ret = obj->out_commit();
   obj->close();
-  //  log(1) << "Login Handler finished" << endl;
+  //  obj->log(1) << "Login Handler finished" << endl;
 
   return ret;
 }
@@ -229,7 +235,7 @@ int login_handler(EhttpPtr obj) {
 int mac_handler(EhttpPtr obj) {
   log(1) << "Mac Handler called" << endl;
   if ((obj->getPostParams()).count("email") > 0) {
-    log(0) << "POST" << endl;
+    obj->log(0) << "POST" << endl;
     string email = obj->getPostParams()["email"];
     string password = obj->getPostParams()["password"];
 
@@ -242,12 +248,12 @@ int mac_handler(EhttpPtr obj) {
     if (password.length() > 0 && db.login(email, password, &user_id, &macaddress)) {
       obj->out_set_file("mac.json");
       obj->out_replace_token("macaddress", macaddress);
-      log(1) << email << " mac success" << endl;
+      obj->log(1) << email << " mac success" << endl;
 
     } else if (installkey.length() > 0 && db.login(email, installkey, &user_id, &macaddress)) {
       obj->out_set_file("mac.json");
       obj->out_replace_token("macaddress", macaddress);
-      log(1) << email << " mac success" << endl;
+      obj->log(1) << email << " mac success" << endl;
 
     } else {
       string msg = user_id + " mac fail";
@@ -283,6 +289,7 @@ void saveToFile(UploadPtr up, const char *buffer, int r) {
 int execute_downloading(UploadPtr up, DownloadPtr dn) {
   //TODO: execute downloading using epoll
   //TODO(bigeye): move to ...
+  up->ehttp->log(1) << "Execute Downloading In" << endl;
   map<string, string> mimetype;
   mimetype["hwp"] = "application/x-hwp";
   mimetype["doc"] = "application/msword";
@@ -330,7 +337,7 @@ int execute_downloading(UploadPtr up, DownloadPtr dn) {
   }
   dn->ehttp->out_commit();
 
-  log(1) << up->ehttp->message.length() << endl;
+  up->ehttp->log(1) << up->ehttp->message.length() << endl;
 
   int res;
   if (!up->ehttp->message.empty())  {
@@ -341,11 +348,11 @@ int execute_downloading(UploadPtr up, DownloadPtr dn) {
     res = 0;
   }
 
-  log(1) << "Download start:" << filename << " " << strContentLength.str() << " " << res << endl;
+  up->ehttp->log(1) << "Download start:" << filename << " " << strContentLength.str() << " " << res << endl;
 
-  log(1) << "RES : " << res << endl;
+  up->ehttp->log(1) << "RES : " << res << endl;
   if (res < 0 || res != (int)up->ehttp->message.length()) {
-    log(1) << "Error first sending" << endl;
+    up->ehttp->log(1) << "Error first sending" << endl;
     dn->ehttp->close();
     up->ehttp->close();
     return EHTTP_ERR_GENERIC;
@@ -365,7 +372,7 @@ int execute_downloading(UploadPtr up, DownloadPtr dn) {
 }
 
 int execute_polling(RequestPtr request, PollingPtr polling) {
-
+  polling->ehttp->log(1) << "Execute Polling In" << endl;
   TLOCK(mutex_requests_key);
   requests_key[request->key] = request;
   TUNLOCK(mutex_requests_key);
@@ -392,7 +399,7 @@ int execute_polling(RequestPtr request, PollingPtr polling) {
   if (ret != 0) {  // if error
     return ret;
   }
-  log(1) << "execute_polling: End and assign request:" << request->ehttp->getFD() << endl;
+  polling->ehttp->log(1) << "execute_polling: End and assign request:" << endl;
   return ret;
 }
 
@@ -417,6 +424,9 @@ int request_handler(EhttpPtr obj) {
 
   string session_id = obj->ptheCookie["SESSIONID"];
   string userid = get_userid_from_session(obj);
+  string username = get_username_from_session(obj);
+  obj->username = username;
+  obj->log(1) << "Request handler In" << endl;
 
   //TODO(bigeye): logout is deprecated.
   if (obj->getUrlParams()["command"] == "logout") {
@@ -436,7 +446,6 @@ int request_handler(EhttpPtr obj) {
   }
 
   if (obj->getUrlParams().count("device") == 0 || obj->getUrlParams()["device"] == "") {
-	string username = get_username_from_session(obj);
     obj->out_set_file("device.json");
     obj->out_replace_token("username", username);
     obj->out_replace();
@@ -476,7 +485,7 @@ int request_handler(EhttpPtr obj) {
   TUNLOCK(mutex_pollings);
 
   if (polling.get() != NULL) {
-    log(1) << "Request: Execute polling ("
+    obj->log(1) << "Request: Execute polling ("
            << request->ehttp->getFD() << ","
            << polling->ehttp->getFD() << ")"
            << " with command:" << request->command
@@ -485,8 +494,7 @@ int request_handler(EhttpPtr obj) {
 
     execute_polling(request, polling);
   } else {
-    log(1) << "Request: Waiting ("
-           << obj->getFD() << ")"
+    obj->log(1) << "Request: Waiting"
            << " with command:" << request->command
            << ", requestpath:" << request->requestpath
            << ", key:" << request->key << endl;
@@ -502,6 +510,9 @@ int polling_handler(EhttpPtr obj) {
     return EHTTP_ERR_GENERIC;
   }
   string userid = get_userid_from_session(obj);
+  string username = get_username_from_session(obj);
+  obj->username = username;
+  obj->log(1) << "Polling handler In" << endl;
 
   PollingPtr polling(new Polling);
   polling->ehttp = obj;
@@ -525,7 +536,7 @@ int polling_handler(EhttpPtr obj) {
   TUNLOCK(mutex_pollings);
 
   if (request.get() != NULL) {
-    log(1) << "Request: Execute polling ("
+    obj->log(1) << "Request: Execute polling ("
            << request->ehttp->getFD() << ","
            << polling->ehttp->getFD() << ")"
            << " with command:" << request->command
@@ -534,8 +545,7 @@ int polling_handler(EhttpPtr obj) {
 
     execute_polling(request, polling);
   } else {
-    log(1) << "Request: Waiting ("
-           << obj->getFD() << ")" << endl;
+    obj->log(1) << "Request: Waiting" << endl;
     TLOCK(mutex_queue_pollings);
     queue_pollings.push(polling);
     TUNLOCK(mutex_queue_pollings);
@@ -551,21 +561,24 @@ int upload_handler(EhttpPtr obj) {
   }
 
   string userid = get_userid_from_session(obj);
+  string username = get_username_from_session(obj);
+  obj->username = username;
+  obj->log(1) << "Upload handler In" << endl;
 
   string jsondata = obj->getPostParams()["jsondata"];
   string key = obj->getPostParams()["incrkey"];
   string command = obj->getPostParams()["command"];
 
-  log(2) << "UPLOAD HANDLER: " << key << endl;
+  obj->log(2) << "UPLOAD HANDLER: " << key << endl;
 
   // fetch request.
   RequestPtr request;
   TLOCK(mutex_requests_key);
   if (requests_key.count(key)) {
-    log(1) << "incrkey " << key << " is erased!" << endl;
+    obj->log(1) << "incrkey " << key << " is erased!" << endl;
     request = requests_key[key];
     requests_key.erase(key);
-    log(1) << "request count " << request.use_count() << endl;
+    obj->log(1) << "request count " << request.use_count() << endl;
   }
   TUNLOCK(mutex_requests_key);
 
@@ -589,9 +602,9 @@ int upload_handler(EhttpPtr obj) {
     download->requestpath = request->requestpath;
 
     execute_downloading(upload, download);
-    log(1) << "execute_downloading end!! request count " << request.use_count() << endl;
+    obj->log(1) << "execute_downloading end!! request count " << request.use_count() << endl;
   } else {
-    log(0) << "jsondata : " << jsondata << endl;
+    obj->log(0) << "jsondata : " << jsondata << endl;
     request->ehttp->out_set_file("request.json");
     request->ehttp->out_replace_token("jsondata", jsondata);
     request->ehttp->out_replace();
@@ -624,6 +637,7 @@ size_t filesize(const char *filename){
 }
 
 void *session_killer(void *arg) {
+  log(1) << "Session Killer In" << endl;
   while(1) {
     sleep(600);
     time_t now = time(NULL);
@@ -643,6 +657,7 @@ void *session_killer(void *arg) {
 }
 
 void *mysql_updator(void *arg) {
+  log(1) << "Mysql Updater In" << endl;
   while(1) {
     DrMysql::connection_init();
     sleep(600);
@@ -650,6 +665,7 @@ void *mysql_updator(void *arg) {
 }
 
 void *timeout_killer(void *arg) {
+  log(1) << "Timeout Killer In" << endl;
   while(1) {
     sleep(1);
     time_t now = time(NULL);
@@ -657,7 +673,7 @@ void *timeout_killer(void *arg) {
     while (!queue_requests.empty()) {
       RequestPtr ptr = queue_requests.front();
       if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
-        log(1) << "request queue timeout" << endl;
+        ptr->ehttp->log(1) << "request queue timeout" << endl;
         queue_requests.pop();
         TLOCK(mutex_requests);
         if (requests.count(ptr->userid) > 0 && requests[ptr->userid].get() == ptr.get()) {
@@ -676,8 +692,8 @@ void *timeout_killer(void *arg) {
     while(!queue_pollings.empty()) {
       PollingPtr ptr = queue_pollings.front();
       if (ptr->ehttp->timestamp + timeout_sec_polling <= now) {
-        log(1) << "polling queue timeout" << endl;
-        log(1) << "polling queue: " << ptr->userid << endl;
+        ptr->ehttp->log(1) << "polling queue timeout" << endl;
+        ptr->ehttp->log(1) << "polling queue: " << ptr->userid << endl;
         queue_pollings.pop();
         TLOCK(mutex_pollings);
         if (pollings.count(ptr->userid) > 0 && pollings[ptr->userid].get() == ptr.get()) {
@@ -695,23 +711,23 @@ void *timeout_killer(void *arg) {
     while(!queue_requests_key.empty()) {
       log(1) << "requests key queue timeout"  << queue_requests_key.front().use_count() << " " << queue_requests_key.front()->key  << endl;
       RequestPtr ptr = queue_requests_key.front();
-      log(1) << "### " << ptr->ehttp->timestamp << " + " << timeout_sec_default << " <=? " << now << endl;
+      ptr->ehttp->log(1) << "### " << ptr->ehttp->timestamp << " + " << timeout_sec_default << " <=? " << now << endl;
       if (ptr->ehttp->timestamp + timeout_sec_requests_key <= now) {
         queue_requests_key.pop();
 
         /*
         if (!ptr.unique()) {
           TLOCK(mutex_requests_key);
-          log(1) << "erase req key " << ptr->key << endl;
+          ptr->ehttp->log(1) << "erase req key " << ptr->key << endl;
           requests_key.erase(ptr->key);
           TUNLOCK(mutex_requests_key);
         } else {
-          log(1) << "call ehttp timeout " << endl;
+          ptr->ehttp->log(1) << "call ehttp timeout " << endl;
           ptr->ehttp->timeout();
           }*/
 
         TLOCK(mutex_requests_key);
-        log(1) << "erase req key " << ptr->key << endl;
+        ptr->ehttp->log(1) << "erase req key " << ptr->key << endl;
         ptr->ehttp->timeout();
         requests_key.erase(ptr->key);
         TUNLOCK(mutex_requests_key);
@@ -741,7 +757,7 @@ void *main_thread(void *arg) {
       }
       TUNLOCK(new_connection_mutex);
     }
-    log(1) << "FETCH END! THREAD:" << thread->tid << endl;
+    log(0) << "FETCH END! THREAD:" << thread->tid << endl;
 
     if (http->isSsl) {
       if (http->initSSL(ctx) < 0) {
@@ -766,7 +782,7 @@ void *main_thread(void *arg) {
 
     // nonblock(http->getFD());
 
-    log(1) << "FETCH WORK END! THREAD:" << thread->tid << endl;
+    log(0) << "FETCH WORK END! THREAD:" << thread->tid << endl;
 
     if (http->parse_request() < 0) {
       http->close();
@@ -814,7 +830,7 @@ void *http_listen (void *arg) {
   struct sockaddr_in client_addr;
   socklen_t sin_size = sizeof(struct sockaddr);
 
-  log(2) << "DR Server Start! Listen..." << endl;
+  log(1) << "DR Server Start! Listen...(HTTP)" << endl;
   for( ; ; ) {
     int clifd;
     if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
@@ -823,7 +839,7 @@ void *http_listen (void *arg) {
     static int linger[2] = {0,0};
     setsockopt(clifd, SOL_SOCKET,SO_LINGER,&linger, sizeof(linger));
     TLOCK(new_connection_mutex);
-    log(1) << "Http Accepted... " << clifd << "  / Queue size : " << conn_pool->size() << " / Thread: " << MAX_THREAD << endl;
+    log(0) << "Http Accepted... " << clifd << "  / Queue size : " << conn_pool->size() << " / Thread: " << MAX_THREAD << endl;
 
     EhttpPtr http = EhttpPtr(new Ehttp());
     http->isSsl = false;
@@ -885,7 +901,7 @@ void *https_listen (void *arg) {
   struct sockaddr_in client_addr;
   socklen_t sin_size = sizeof(struct sockaddr);
 
-  log(2) << "DR Server Start! Listen..." << endl;
+  log(1) << "DR Server Start! Listen...(HTTPS)" << endl;
   for( ; ; ) {
     int clifd;
     if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
@@ -895,7 +911,7 @@ void *https_listen (void *arg) {
     static int linger[2] = {0,0};
     setsockopt(clifd, SOL_SOCKET,SO_LINGER,&linger, sizeof(linger));
     TLOCK(new_connection_mutex);
-    log(1) << "Https Accepted... " << clifd << "  / Queue size : " << conn_pool->size() << " / Thread: " << MAX_THREAD << endl;
+    log(0) << "Https Accepted... " << clifd << "  / Queue size : " << conn_pool->size() << " / Thread: " << MAX_THREAD << endl;
 
     EhttpPtr http = EhttpPtr(new Ehttp());
     http->isSsl = true;
@@ -924,7 +940,7 @@ int main(int argc, char** args) {
 
   if (vm.count("h")) {
     hostname = vm["h"].as<string>();
-    log(1) << hostname << endl;
+    log(0) << hostname << endl;
   } else {
     log(2) << "NO host!" << endl;
   }
