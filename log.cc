@@ -1,7 +1,6 @@
 #include "./log.h"
 
-ofstream null_stream("/dev/null");
-
+ofstream nullstream("/dev/null");
 ostream & log(int debuglevel) {
   if (debuglevel >= DEBUGLEVEL) {
     time_t rawtime;
@@ -15,6 +14,6 @@ ostream & log(int debuglevel) {
     }
     return cout;
   } else {
-    return null_stream;
+    return nullstream;
   }
 }

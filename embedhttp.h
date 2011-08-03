@@ -123,6 +123,7 @@ class Ehttp: public boost::enable_shared_from_this<Ehttp> {
   void out_buffer_clear(void);
 
 public:
+  string username;
   static void set_template_path(string p) {
     Ehttp::template_path = p;
   };
@@ -209,6 +210,8 @@ public:
 
   void close();
   int isClose();
+
+  ostream & log(int debuglevel);
 
   int error(const string &error_message);
   int timeout();
