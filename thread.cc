@@ -430,7 +430,9 @@ int request_handler(EhttpPtr obj) {
 
   //TODO(bigeye): logout is deprecated.
   if (obj->getUrlParams()["command"] == "logout") {
+    TLOCK(mutex_session);
     session.erase(session_id);
+    TUNLOCK(mutex_session);
     obj->out_set_file("request.json");
     obj->out_replace_token("jsondata", "");
     obj->out_replace();
@@ -471,17 +473,17 @@ int request_handler(EhttpPtr obj) {
   // fetch polling.
   PollingPtr polling;
   TLOCK(mutex_pollings);
+  TLOCK(mutex_queue_requests);
   TLOCK(mutex_requests);
   if (pollings.count(userid)) {
     polling = pollings[userid];
     pollings.erase(userid);
   } else {
     requests[userid] = request;
-    TLOCK(mutex_queue_requests);
     queue_requests.push(request);
-    TUNLOCK(mutex_queue_requests);
   }
   TUNLOCK(mutex_requests);
+  TUNLOCK(mutex_queue_requests);
   TUNLOCK(mutex_pollings);
 
   if (polling.get() != NULL) {
@@ -711,7 +713,6 @@ void *timeout_killer(void *arg) {
     while(!queue_requests_key.empty()) {
       log(1) << "requests key queue timeout"  << queue_requests_key.front().use_count() << " " << queue_requests_key.front()->key  << endl;
       RequestPtr ptr = queue_requests_key.front();
-      ptr->ehttp->log(1) << "### " << ptr->ehttp->timestamp << " + " << timeout_sec_default << " <=? " << now << endl;
       if (ptr->ehttp->timestamp + timeout_sec_requests_key <= now) {
         queue_requests_key.pop();
 
