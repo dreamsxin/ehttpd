@@ -711,7 +711,7 @@ void *timeout_killer(void *arg) {
 
     TLOCK(mutex_queue_requests_key);
     while(!queue_requests_key.empty()) {
-      log(1) << "requests key queue timeout"  << queue_requests_key.front().use_count() << " " << queue_requests_key.front()->key  << endl;
+      log(0) << "requests key queue timeout"  << queue_requests_key.front().use_count() << " " << queue_requests_key.front()->key  << endl;
       RequestPtr ptr = queue_requests_key.front();
       if (ptr->ehttp->timestamp + timeout_sec_requests_key <= now) {
         queue_requests_key.pop();
@@ -728,7 +728,7 @@ void *timeout_killer(void *arg) {
           }*/
 
         TLOCK(mutex_requests_key);
-        ptr->ehttp->log(1) << "erase req key " << ptr->key << endl;
+        ptr->ehttp->log(0) << "erase req key " << ptr->key << endl;
         ptr->ehttp->timeout();
         requests_key.erase(ptr->key);
         TUNLOCK(mutex_requests_key);

@@ -67,8 +67,8 @@ bool DrMysql::login(string const &email, string const &password,
     pthread_mutex_unlock(&mutex_login);
     return false;
   } catch (std::runtime_error &e) {
-    cout << "ERROR: runtime_error in " << __FILE__;
-    cout << " (" << __func__ << ") on line " << __LINE__ << endl;
+    //cout << "ERROR: runtime_error in " << __FILE__;
+    //cout << " (" << __func__ << ") on line " << __LINE__ << endl;
     close();
     driver->threadEnd();
     pthread_mutex_unlock(&mutex_login);

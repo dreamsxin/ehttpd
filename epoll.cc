@@ -78,7 +78,7 @@ bool DrEpoll::process() {
     int fd = trans->up->ehttp->getFD();
 
     int r1, r2;
-    log(1) << "upload fd:" << trans->up->ehttp->getFD() << " dn:" << trans->dn->ehttp->getFD() << endl;
+    log(0) << "upload fd:" << trans->up->ehttp->getFD() << " dn:" << trans->dn->ehttp->getFD() << endl;
 
 
     int len = trans->dn->remaining;
@@ -87,18 +87,18 @@ bool DrEpoll::process() {
 
     r1 = trans->up->ehttp->recv(buffer, len);
     if (r1 < 0) {
-      log(1) << "close r1 rem:" << trans->dn->remaining << " r1: " << r1 << endl;
+      log(0) << "close r1 rem:" << trans->dn->remaining << " r1: " << r1 << endl;
       epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, &(events[i]));
       trans->close();
       transfers.erase(trans->dn->key);
       continue;
     }
-    log(1) << "download rem:" << trans->dn->remaining << " r1: " << r1 << endl;
+    log(0) << "download rem:" << trans->dn->remaining << " r1: " << r1 << endl;
 
     trans->up->ehttp->timestamp = trans->dn->ehttp->timestamp =  time(NULL);
     r2 = trans->dn->ehttp->send(buffer, r1);
     if (r2 < 0 || r1 != r2) {
-      log(1) << "close r2 rem:" << trans->dn->remaining << " r2: " << r2 << endl;
+      log(0) << "close r2 rem:" << trans->dn->remaining << " r2: " << r2 << endl;
       epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, &(events[i]));
       trans->close();
       transfers.erase(trans->dn->key);
@@ -107,12 +107,12 @@ bool DrEpoll::process() {
 
     trans->dn->remaining -= r1;
     if (trans->dn->remaining <= 0) {
-      log(1) << "remaining <= 0 : " << trans->dn->remaining << endl;
+      log(0) << "remaining <= 0 : " << trans->dn->remaining << endl;
       epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, &(events[i]));
       trans->close();
       transfers.erase(trans->dn->key);
     } else {
-      log(1) << "remaining > 0: " << trans->dn->remaining << endl;
+      log(0) << "remaining > 0: " << trans->dn->remaining << endl;
       struct epoll_event event;
       event.events = EPOLLIN | EPOLLONESHOT;
       event.data.fd = fd;
