@@ -31,8 +31,10 @@ dr_mysql.o : dr_mysql.cc *.h
 	$(CXX) $(CXXFLAGS) -c -o mysql_test.o mysql_test.cc -I/usr/local/include/cppconn -I/usr/include/openssl
 
 mysql_test : dr_mysql.o mysql_test.o
+	mkdir -p $(BIN)
 	$(CXX) $(CXXFLAGS) -o $(BIN)/mysql_test -lmysqlcppconn $^
 
 $(DRSERVER) : thread.o embedhttp.o dr_mysql.o log.o epoll.o
+	mkdir -p $(BIN)
 	$(CXX) $(CXXFLAGS) -o $(BIN)/$(DRSERVER) -lpthread -lmysqlcppconn -lboost_program_options $^
 

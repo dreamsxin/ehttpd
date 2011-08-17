@@ -9,14 +9,14 @@
 . /etc/init.d/functions
 
 prog=drserver
-drserver=${DRSERVER-/home/dr/dr/ehttpd/bin/drserver}
+drserver=${DRSERVER-/home/dr/ehttpd/bin/drserver}
 pidfile=${PIDFILE-/var/drserver/drserver.pid}
 lockfile=${LOCKFILE-/var/drserver/drserver.lock}
 logfile=${LOGFILE-/var/drserver/drserver.log}
-drhostname=${drHOSTNAME-w2.directreader.net}
-template=${TEMPLATE-/home/dr/dr/ehttpd/}
+drhostname=${drHOSTNAME-kr2.directreader.net}
+template=${TEMPLATE-/home/dr/ehttpd/}
 savepath=${SAVEPATH-/drserver/}
-key_path=${KEY_PATH-/home/dr/dr/ehttpd/}
+key_path=${KEY_PATH-/home/dr/ehttpd/}
 
 RETVAL=0
 
