@@ -1,0 +1,3 @@
+# cron for drserver
+* * * * * root /etc/init.d/drserver check_and_start 2>/dev/null 1>/dev/null
+* * * * * sleep 30; root /etc/init.d/drserver check_and_start 2>/dev/null 1>/dev/null
