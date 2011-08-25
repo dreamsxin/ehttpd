@@ -115,7 +115,7 @@ void loginFail (EhttpPtr obj) {
 }
 
 int handleDefault(EhttpPtr obj) {
-  obj->out_set_file("helloworld_template.html");
+  obj->out_set_file("default.html");
   obj->out_replace_token("MESSAGE", "Hello World");
   obj->out_replace();
   int ret = obj->out_commit();
@@ -440,7 +440,7 @@ int request_handler(EhttpPtr obj) {
     obj->close();
     return EHTTP_ERR_OK;
   } else if (obj->getUrlParams()["command"] == "sendemail") {
-    obj->out_set_file("helloworld_template.html");
+    obj->out_set_file("default.html");
     obj->out_replace();
     int ret = obj->out_commit();
     obj->close();
