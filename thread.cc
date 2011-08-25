@@ -269,23 +269,6 @@ int mac_handler(EhttpPtr obj) {
   }
 }
 
-void saveToFile(UploadPtr up, const char *buffer, int r) {
-  return;
-  string &key = up->key;
-  size_t found = key.find("-");
-  if (found == string::npos) {
-    return;
-  }
-  string date = key.substr(0, found);
-  string path = Ehttp::get_save_path() + "/" + date + "/" + key;
-  FILE *fp = fopen(path.c_str(), "a");
-  if (fp == NULL) {
-    return;
-  }
-  fwrite(buffer, 1, r, fp);
-  fclose(fp);
-}
-
 int execute_downloading(UploadPtr up, DownloadPtr dn) {
   //TODO: execute downloading using epoll
   //TODO(bigeye): move to ...
@@ -357,8 +340,6 @@ int execute_downloading(UploadPtr up, DownloadPtr dn) {
     up->ehttp->close();
     return EHTTP_ERR_GENERIC;
   }
-
-  saveToFile(up, up->ehttp->message.c_str(), up->ehttp->message.length());
 
   dn->remaining = up->ehttp->getContentLength();
   dn->remaining -= res;
