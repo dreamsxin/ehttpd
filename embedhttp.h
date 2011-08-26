@@ -133,6 +133,14 @@ class Ehttp: public boost::enable_shared_from_this<Ehttp> {
   int __unescape(string *str);
   int __addslash(string *str);
   int __parse_cookie(string &cookie_string);
+  void __out_buffer_clear(void);
+  void __out_replace_token( string tok, string val );
+  void __out_set_file( string fname, int ftype=EHTTP_TEXT_FILE);
+  void __out_write_str( char *str );
+  void __out_write_str( string &str );
+
+  ssize_t __send(const char *buf, size_t len);
+  ssize_t __recv(void *buf, size_t len);
 
  public:
   string username;
@@ -229,7 +237,6 @@ class Ehttp: public boost::enable_shared_from_this<Ehttp> {
   int isClose();
 
   ostream & log(int debuglevel);
-  ostream & __log(int debuglevel);
 
   int error(const string &error_message);
   int timeout();

@@ -100,6 +100,13 @@ int Ehttp::initSSL(SSL_CTX* ctx) {
 }
 
 ssize_t Ehttp::send(const char *buf, size_t len) {
+  TLOCK(mutex_ehttp);
+  ssize_t ret = __send(buf, len);
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+ssize_t Ehttp::__send(const char *buf, size_t len) {
   if (isClose()) {
     return -1;
   }
@@ -152,6 +159,13 @@ ssize_t Ehttp::send(const char *buf, size_t len) {
 
 
 ssize_t Ehttp::recv(void *buf, size_t len) {
+  TLOCK(mutex_ehttp);
+  ssize_t ret = __recv(buf, len);
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+ssize_t Ehttp::__recv(void *buf, size_t len) {
   if (isClose()) {
     return -1;
   }
@@ -226,11 +240,19 @@ string &Ehttp::getFilename( void ) {
 }
 
 string Ehttp::getUrlParam(char *key) {
-  return global_parms[key];
+  map<string, string>::iterator it = global_parms.find(key);
+  if (it != global_parms.end())
+    return it->second;
+  else
+    return "";
 }
 
 string Ehttp::getPostParam(char *key) {
-  return global_parms[key];
+  map<string, string>::iterator it = global_parms.find(key);
+  if (it != global_parms.end())
+    return it->second;
+  else
+    return "";
 }
 
 map <string, string> & Ehttp::getPostParams( void ) {
@@ -246,27 +268,61 @@ map <string, string> & Ehttp::getRequestHeaders( void ) {
 }
 
 string Ehttp::getRequestHeader(char *key) {
-  return request_header[key];
+  map<string, string>::iterator it = request_header.find(key);
+  if (it != request_header.end())
+    return it->second;
+  else
+    return "";
 }
 
 void Ehttp::out_replace_token(string tok, string val) {
+  TLOCK(mutex_ehttp);
+  __out_replace_token(tok, val);
+  TUNLOCK(mutex_ehttp);
+}
+
+void Ehttp::__out_replace_token(string tok, string val) {
   replace_token[tok]=val;
 }
 
 void Ehttp::out_set_file(string fname, int ftype) {
+  TLOCK(mutex_ehttp);
+  __out_set_file(fname, ftype);
+  TUNLOCK(mutex_ehttp);
+}
+
+void Ehttp::__out_set_file(string fname, int ftype) {
   outfilename=template_path + fname;
   filetype=ftype;
 }
 
 void Ehttp::out_buffer_clear(void) {
+  TLOCK(mutex_ehttp);
+  __out_buffer_clear();
+  TUNLOCK(mutex_ehttp);
+}
+
+void Ehttp::__out_buffer_clear(void) {
   outbuffer="";
 }
 
 void Ehttp::out_write_str(char *str) {
+  TLOCK(mutex_ehttp);
+  __out_write_str(str);
+  TUNLOCK(mutex_ehttp);
+}
+
+void Ehttp::__out_write_str(char *str) {
   outbuffer+=str;
 }
 
 void Ehttp::out_write_str(string &str) {
+  TLOCK(mutex_ehttp);
+  __out_write_str(str);
+  TUNLOCK(mutex_ehttp);
+}
+
+void Ehttp::__out_write_str(string &str) {
   outbuffer+=str;
 }
 
@@ -375,7 +431,7 @@ int Ehttp::__out_commit_binary(void) {
         int remain = r;
         int total = remain;
         while(remain) {
-          int w = send(buffer + (total - remain), remain);
+          int w = __send(buffer + (total - remain), remain);
           log(0) << w << endl;
           if(w < 0 || fdState == 1) {
             err = w;
@@ -434,7 +490,7 @@ int Ehttp::out_commit(int header) {
   int remain = outbuffer.length();
   int total = remain;
   while (remain > 0) {
-    w=send(outbuffer.c_str() + (total - remain), remain);
+    w=__send(outbuffer.c_str() + (total - remain), remain);
     log(0) << w << endl;
     if(w < 0 || fdState == 1) {
       err = w;
@@ -494,7 +550,7 @@ int Ehttp::__read_header(string *header) {
   Byte buffer[INPUT_BUFFER_SIZE];
 
   while((offset = header->find("\r\n\r\n")) == string::npos) {
-    int r = recv(buffer, INPUT_BUFFER_SIZE - 1);
+    int r = __recv(buffer, INPUT_BUFFER_SIZE - 1);
 
     log(0) << "read_header r:" << r << "/fdState : " << fdState << endl;
 
@@ -824,7 +880,7 @@ int Ehttp::__parse_message() {
 
     Byte buffer[INPUT_BUFFER_SIZE];
     while(contentlength > message.length()) {
-      int r = recv(buffer, INPUT_BUFFER_SIZE - 1);
+      int r = __recv(buffer, INPUT_BUFFER_SIZE - 1);
       if(r <= 0 || fdState == 1) {
         return EHTTP_ERR_GENERIC;
       }
@@ -907,7 +963,7 @@ int Ehttp::parse_request() {
   log(0) << " out_buffer_clear" << endl;
 
   //Call the default handler if we didn't get the filename
-  out_buffer_clear();
+  __out_buffer_clear();
 
   log(0) << " pPreRequestHandler" << endl;
   if( pPreRequestHandler ) pPreRequestHandler( shared_from_this() );
@@ -998,8 +1054,8 @@ int Ehttp::error(const string &error_message) {
 int Ehttp::__error(const string &error_message) {
   if (!isClose()) {
     log(2) << error_message << endl;
-    out_set_file("errormessage.json");
-    out_replace_token("fail", error_message);
+    __out_set_file("errormessage.json");
+    __out_replace_token("fail", error_message);
     __out_replace();
     out_commit();
     __close();
@@ -1017,7 +1073,7 @@ int Ehttp::timeout() {
 int Ehttp::__timeout() {
   if (!isClose()) {
     log(0) << "timeout " << endl;
-    out_set_file("timeout.json");
+    __out_set_file("timeout.json");
     __out_replace();
     out_commit();
     __close();
@@ -1035,8 +1091,8 @@ int Ehttp::uploadend() {
 int Ehttp::__uploadend() {
   if (!isClose()) {
     log(0) << "upload end " << endl;
-    out_set_file("request.json");
-    out_replace_token("jsondata", "\"\"");
+    __out_set_file("request.json");
+    __out_replace_token("jsondata", "\"\"");
     __out_replace();
     out_commit();
     __close();
@@ -1045,11 +1101,6 @@ int Ehttp::__uploadend() {
 }
 
 ostream & Ehttp::log(int debuglevel) {
-  ostream& ret = __log(debuglevel);
-  return ret;
-}
-
-ostream & Ehttp::__log(int debuglevel) {
   if (username == "")
     debuglevel = -1;
   ostream& out = ::log(debuglevel);
