@@ -115,14 +115,26 @@ class Ehttp: public boost::enable_shared_from_this<Ehttp> {
   map <string, int (*)(EhttpPtr obj)> handler_map;
   int (*pDefaultHandler)(EhttpPtr obj);
   void (*pPreRequestHandler)(EhttpPtr obj);
+ private:
+  int __init();
+  int __out_replace(void);
+  int __out_commit_binary(void);
+  int __out_commit(int header=EHTTP_HDR_OK);
+  void __add_handler( char *filename, int (*pHandler)(EhttpPtr obj));
+  void __set_prerequest_handler( void (*pHandler)(EhttpPtr obj));
+  void __close();
+  int __error(const string &error_message);
+  int __timeout();
+  int __uploadend();
+  int __read_header(string *header);
+  int __parse_header(string &header);
+  int __parse_out_pairs(string &remainder, map <string, string> &parms );
+  int __parse_message();
+  int __unescape(string *str);
+  int __addslash(string *str);
+  int __parse_cookie(string &cookie_string);
 
-  int read_header(string *header);
-  int parse_header(string &header);
-  int parse_out_pairs(string &remainder, map <string, string> &parms );
-  int parse_message();
-  void out_buffer_clear(void);
-
-public:
+ public:
   string username;
   static void set_template_path(string p) {
     Ehttp::template_path = p;
@@ -144,6 +156,11 @@ public:
   int unescape(string *str);
   int addslash(string *str);
   int parse_cookie(string &cookie_string);
+  int read_header(string *header);
+  int parse_header(string &header);
+  int parse_out_pairs(string &remainder, map <string, string> &parms );
+  int parse_message();
+  void out_buffer_clear(void);
 
   int initSSL(SSL_CTX* ctx);
   BIO                     *as_sbio;
@@ -165,7 +182,7 @@ public:
       error("Critial Error");
   };
 
-  int init( void );
+  int init();
 
   int getRequestType(void);
   bool isGetRequest(void);
@@ -212,6 +229,7 @@ public:
   int isClose();
 
   ostream & log(int debuglevel);
+  ostream & __log(int debuglevel);
 
   int error(const string &error_message);
   int timeout();

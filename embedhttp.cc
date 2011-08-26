@@ -55,6 +55,7 @@ string Ehttp::template_path = "./";
 string Ehttp::save_path = "./";
 
 pthread_mutex_t mutex_ssl = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_ehttp = PTHREAD_MUTEX_INITIALIZER;
 
 static int checkSslError() {
   unsigned long code = ERR_get_error();
@@ -270,6 +271,13 @@ void Ehttp::out_write_str(string &str) {
 }
 
 int Ehttp::out_replace(void) {
+  TLOCK(mutex_ehttp);
+  int ret = __out_replace();
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+int Ehttp::__out_replace(void) {
   int r;
   int state=0;
   int err=0;
@@ -350,6 +358,13 @@ int Ehttp::out_replace(void) {
 
 
 int Ehttp::out_commit_binary(void) {
+  TLOCK(mutex_ehttp);
+  int ret = __out_commit_binary();
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+int Ehttp::__out_commit_binary(void) {
   int err = 0;
   FILE *f = fopen(outfilename.c_str(), "rb");
   char buffer[10240];
@@ -377,13 +392,20 @@ int Ehttp::out_commit_binary(void) {
   return err;
 }
 
+int Ehttp::__out_commit(int header) {
+  TLOCK(mutex_ehttp);
+  int ret = __out_commit(header);
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
 int Ehttp::out_commit(int header) {
   int w;
   int err = 0;
 
   log(0) << "Outbuffer before outcommit [[[" << outbuffer << "]]]" << endl;
   if( filetype == EHTTP_BINARY_FILE) {
-    return out_commit_binary();
+    return __out_commit_binary();
   }
 
   if( header == EHTTP_HDR_OK) {
@@ -424,6 +446,13 @@ int Ehttp::out_commit(int header) {
   return err;
 }
 
+int Ehttp::__init(void) {
+  TLOCK(mutex_ehttp);
+  int ret = __init();
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
 int Ehttp::init(void) {
   log(0) << "Ehttp init..." << endl;
   pPreRequestHandler = NULL;
@@ -431,6 +460,10 @@ int Ehttp::init(void) {
 }
 
 void Ehttp::add_handler(char *filename, int (*pHandler)(EhttpPtr obj)) {
+  __add_handler(filename, pHandler);
+}
+
+void Ehttp::__add_handler(char *filename, int (*pHandler)(EhttpPtr obj)) {
   if( !filename ) {
     pDefaultHandler = pHandler;
   } else {
@@ -439,10 +472,21 @@ void Ehttp::add_handler(char *filename, int (*pHandler)(EhttpPtr obj)) {
 }
 
 void Ehttp::set_prerequest_handler(void (*pHandler)(EhttpPtr obj)) {
+  __set_prerequest_handler(pHandler);
+}
+
+void Ehttp::__set_prerequest_handler(void (*pHandler)(EhttpPtr obj)) {
   pPreRequestHandler = pHandler;
 }
 
 int Ehttp::read_header(string *header) {
+  TLOCK(mutex_ehttp);
+  int ret = __read_header(header);
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+int Ehttp::__read_header(string *header) {
   *header = "";
   size_t offset;
   log(0) << "read_header..." << endl;
@@ -475,6 +519,13 @@ int Ehttp::read_header(string *header) {
 }
 
 int Ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
+  TLOCK(mutex_ehttp);
+  int ret = __parse_out_pairs(remainder, parms);
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+int Ehttp::__parse_out_pairs(string &remainder, map <string, string> &parms) {
   string id;
   string value;
   int state = 0;
@@ -502,8 +553,8 @@ int Ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
     case 2:
       switch (remainder[i]) {
       case '&':
-        unescape(&id);
-        unescape(&value);
+        __unescape(&id);
+        __unescape(&value);
         parms[id] = value;
         global_parms[id] = value;
         log(0) << "Added " << id << " to " << value << endl;
@@ -519,8 +570,8 @@ int Ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
   }
   // Add non-nil value to parm list
   if( state == 2 ) {
-    unescape(&id);
-    unescape(&value);
+    __unescape(&id);
+    __unescape(&value);
     log(0) << "Added " << id << " to " << value << endl;
     parms[id]=value;
     global_parms[id] = value;
@@ -529,8 +580,14 @@ int Ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
   return EHTTP_ERR_OK;
 }
 
-
 int Ehttp::parse_header(string &header) {
+  TLOCK(mutex_ehttp);
+  int ret = __parse_header(header);
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+int Ehttp::__parse_header(string &header) {
   char *request=NULL;
   char *request_end=NULL;
   char *pHeader = const_cast<char *>(header.c_str());
@@ -617,7 +674,7 @@ int Ehttp::parse_header(string &header) {
     // Yank out filename minus parms which follow
     string remainder=filename.substr(idx+1);
     filename=filename.substr(0,idx);
-    parse_out_pairs(remainder, url_parms);
+    __parse_out_pairs(remainder, url_parms);
   }
 
   // Find request headers,
@@ -660,7 +717,7 @@ int Ehttp::parse_header(string &header) {
     }
   }
   // Parse Cookie
-  int ret = parse_cookie(request_header["COOKIE"]);
+  int ret = __parse_cookie(request_header["COOKIE"]);
   if (ret != EHTTP_ERR_OK) {
     return ret;
   }
@@ -679,6 +736,13 @@ int Ehttp::getContentLength() {
 }
 
 int Ehttp::unescape(string *str) {
+  TLOCK(mutex_ehttp);
+  int ret = __unescape(str);
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+int Ehttp::__unescape(string *str) {
   size_t found = -1;
   while((found = str->find('%', found+1)) != string::npos) {
     if (found+2 >= str->size()) {
@@ -694,6 +758,13 @@ int Ehttp::unescape(string *str) {
 }
 
 int Ehttp::addslash(string *str) {
+  TLOCK(mutex_ehttp);
+  int ret = __addslash(str);
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+int Ehttp::__addslash(string *str) {
   string tmp;
   for (unsigned int i = 0; i < str->length(); ++i) {
     if (str->at(i) == '\\') {
@@ -706,6 +777,13 @@ int Ehttp::addslash(string *str) {
 }
 
 int Ehttp::parse_cookie(string &cookie_string) {
+  TLOCK(mutex_ehttp);
+  int ret = __parse_cookie(cookie_string);
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+int Ehttp::__parse_cookie(string &cookie_string) {
   vector<string> split_result;
   split(split_result, cookie_string, is_any_of(";"), token_compress_on);
   BOOST_FOREACH(string &pair, split_result) {
@@ -714,15 +792,22 @@ int Ehttp::parse_cookie(string &cookie_string) {
     if ((int) pair_split_result.size() == 2) {
       trim(pair_split_result[0]);
       trim(pair_split_result[1]);
-      unescape(&pair_split_result[0]);
-      unescape(&pair_split_result[1]);
+      __unescape(&pair_split_result[0]);
+      __unescape(&pair_split_result[1]);
       ptheCookie[pair_split_result[0]] = pair_split_result[1];
     }
   }
   return EHTTP_ERR_OK;
 }
 
-int Ehttp:: parse_message() {
+int Ehttp::parse_message() {
+  TLOCK(mutex_ehttp);
+  int ret = __parse_message();
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+int Ehttp::__parse_message() {
   if( !contentlength ) return EHTTP_ERR_OK;
 
   log(0) << "Parsed content length:" << contentlength << endl;
@@ -759,11 +844,18 @@ int Ehttp:: parse_message() {
 
   // Got here, good, we got the entire reported msg length
   log(0) << "Entire message is <" << message << ">" << endl;
-  parse_out_pairs(message, post_parms);
+  __parse_out_pairs(message, post_parms);
 
   return EHTTP_ERR_OK;
 }
 
+// int Ehttp::parse_request() {
+//   TLOCK(mutex_ehttp);
+//   int ret = __parse_request();
+//   log(0) << "######################################################" << endl;
+//   TUNLOCK(mutex_ehttp);
+//   return ret;
+// }
 
 int Ehttp::parse_request() {
   int (*pHandler)(EhttpPtr obj)=NULL;
@@ -782,13 +874,13 @@ int Ehttp::parse_request() {
   string header;
   string message;
 
-  if(read_header(&header) != EHTTP_ERR_OK) {
+  if(__read_header(&header) != EHTTP_ERR_OK) {
     // non socket
     // log(2) << "Error parsing request" << endl;
     return EHTTP_ERR_GENERIC;
   }
 
-  if(parse_header(header) != EHTTP_ERR_OK) {
+  if(__parse_header(header) != EHTTP_ERR_OK) {
     log(2) << "Error parsing request" << endl;
     return EHTTP_ERR_GENERIC;
   }
@@ -798,7 +890,7 @@ int Ehttp::parse_request() {
   log(0) << filename << endl;
   if(filename == "/upload" && global_parms["command"] == "getfile") {
   } else {
-    if (parse_message() != EHTTP_ERR_OK) {
+    if (__parse_message() != EHTTP_ERR_OK) {
       log(2) << "Error parsing request" << endl;
       return EHTTP_ERR_GENERIC;
     }
@@ -848,6 +940,10 @@ int Ehttp::isClose() {
 }
 
 void Ehttp::close() {
+  __close();
+}
+
+void Ehttp::__close() {
   if (fdState == 1) {
     log(0) << "Connection closed already... "<< endl;
     return;
@@ -893,41 +989,67 @@ void Ehttp::close() {
 }
 
 int Ehttp::error(const string &error_message) {
+  TLOCK(mutex_ehttp);
+  int ret = __error(error_message);
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+int Ehttp::__error(const string &error_message) {
   if (!isClose()) {
     log(2) << error_message << endl;
     out_set_file("errormessage.json");
     out_replace_token("fail", error_message);
-    out_replace();
+    __out_replace();
     out_commit();
-    close();
+    __close();
   }
   return EHTTP_ERR_GENERIC;
 }
 
 int Ehttp::timeout() {
+  TLOCK(mutex_ehttp);
+  int ret = __timeout();
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+int Ehttp::__timeout() {
   if (!isClose()) {
     log(0) << "timeout " << endl;
     out_set_file("timeout.json");
-    out_replace();
+    __out_replace();
     out_commit();
-    close();
+    __close();
   }
   return EHTTP_ERR_GENERIC;
 }
 
 int Ehttp::uploadend() {
+  TLOCK(mutex_ehttp);
+  int ret = __uploadend();
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+int Ehttp::__uploadend() {
   if (!isClose()) {
     log(0) << "upload end " << endl;
     out_set_file("request.json");
     out_replace_token("jsondata", "\"\"");
-    out_replace();
+    __out_replace();
     out_commit();
-    close();
+    __close();
   }
   return EHTTP_ERR_GENERIC;
 }
 
 ostream & Ehttp::log(int debuglevel) {
+  ostream& ret = __log(debuglevel);
+  return ret;
+}
+
+ostream & Ehttp::__log(int debuglevel) {
   if (username == "")
     debuglevel = -1;
   ostream& out = ::log(debuglevel);

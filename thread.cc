@@ -972,8 +972,8 @@ int main(int argc, char** args) {
     pthread_create(&threads[i].tid, NULL, &main_thread, (void *)&threads[i]);
   }
 
-  pthread_t tid;
-  pthread_create(&tid, NULL, &timeout_killer, NULL);
+  // pthread_t tid;
+  // pthread_create(&tid, NULL, &timeout_killer, NULL);
 
   pthread_t tid_session;
   pthread_create(&tid_session, NULL, &session_killer, NULL);
