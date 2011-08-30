@@ -121,7 +121,6 @@ class Ehttp: public boost::enable_shared_from_this<Ehttp> {
   int __out_commit_binary(void);
   int __out_commit(int header=EHTTP_HDR_OK);
   void __add_handler( char *filename, int (*pHandler)(EhttpPtr obj));
-  void __set_prerequest_handler( void (*pHandler)(EhttpPtr obj));
   void __close();
   int __error(const string &error_message);
   int __timeout();
@@ -224,8 +223,6 @@ class Ehttp: public boost::enable_shared_from_this<Ehttp> {
   int parse_request();
 
   void add_handler( char *filename, int (*pHandler)(EhttpPtr obj));
-
-  void set_prerequest_handler( void (*pHandler)(EhttpPtr obj));
 
   map <string, string> & getRequestHeaders( void );
 

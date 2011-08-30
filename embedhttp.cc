@@ -527,14 +527,6 @@ void Ehttp::__add_handler(char *filename, int (*pHandler)(EhttpPtr obj)) {
   }
 }
 
-void Ehttp::set_prerequest_handler(void (*pHandler)(EhttpPtr obj)) {
-  __set_prerequest_handler(pHandler);
-}
-
-void Ehttp::__set_prerequest_handler(void (*pHandler)(EhttpPtr obj)) {
-  pPreRequestHandler = pHandler;
-}
-
 int Ehttp::read_header(string *header) {
   TLOCK(mutex_ehttp);
   int ret = __read_header(header);
@@ -1057,7 +1049,7 @@ int Ehttp::__error(const string &error_message) {
     __out_set_file("errormessage.json");
     __out_replace_token("fail", error_message);
     __out_replace();
-    out_commit();
+    __out_commit();
     __close();
   }
   return EHTTP_ERR_GENERIC;
@@ -1075,7 +1067,7 @@ int Ehttp::__timeout() {
     log(0) << "timeout " << endl;
     __out_set_file("timeout.json");
     __out_replace();
-    out_commit();
+    __out_commit();
     __close();
   }
   return EHTTP_ERR_GENERIC;
@@ -1094,7 +1086,7 @@ int Ehttp::__uploadend() {
     __out_set_file("request.json");
     __out_replace_token("jsondata", "\"\"");
     __out_replace();
-    out_commit();
+    __out_commit();
     __close();
   }
   return EHTTP_ERR_GENERIC;
