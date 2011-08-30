@@ -448,14 +448,14 @@ int Ehttp::__out_commit_binary(void) {
   return err;
 }
 
-int Ehttp::__out_commit(int header) {
+int Ehttp::out_commit(int header) {
   TLOCK(mutex_ehttp);
   int ret = __out_commit(header);
   TUNLOCK(mutex_ehttp);
   return ret;
 }
 
-int Ehttp::out_commit(int header) {
+int Ehttp::__out_commit(int header) {
   int w;
   int err = 0;
 
