@@ -1095,8 +1095,6 @@ int Ehttp::__uploadend() {
 ostream & Ehttp::log(int debuglevel) {
   if (username == "")
     debuglevel = -1;
-  if (username == "ofthunder")
-    debuglevel = 2;
   ostream& out = ::log(debuglevel);
   out << "[" << username << "] (" << getFD() << ") ";
   return out;
