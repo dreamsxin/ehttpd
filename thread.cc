@@ -752,8 +752,10 @@ void *main_thread(void *arg) {
     }
     log(0) << "FETCH END! THREAD:" << thread->tid << endl;
 	uptime[thread->order] = time(NULL);
+	log(0) << "uptime updated" << endl;
 
     if (http->isSsl) {
+	  log(0) << "isSSL Check" << endl;
       if (http->initSSL(ctx) < 0) {
         log(2) << "INIT SSL ERROR" << endl;
         http->close();
@@ -762,7 +764,9 @@ void *main_thread(void *arg) {
     }
 
     // job
+	log(0) << "init start" << endl;
     http->init();
+	log(0) << "add_handler" << endl;
     http->add_handler("/polling", polling_handler);
     http->add_handler("/upload", upload_handler);
     http->add_handler("/request", request_handler);
@@ -772,6 +776,7 @@ void *main_thread(void *arg) {
 
     http->add_handler("/mac", mac_handler);
     http->add_handler("/status", status_handler);
+	log(0) << "add_NULL_handler" << endl;
     http->add_handler(NULL, handleDefault);
 
     // nonblock(http->getFD());
