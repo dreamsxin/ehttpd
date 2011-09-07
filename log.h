@@ -5,7 +5,7 @@
 using namespace std;
 
 #ifndef DEBUGLEVEL
-#define DEBUGLEVEL 0
+#define DEBUGLEVEL 1
 #endif
 
 ostream & log(int debuglevel);

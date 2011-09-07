@@ -37,9 +37,7 @@
 using namespace std;
 namespace po = boost::program_options;
 
-#define MAX_THREAD 64
-time_t uptime[MAX_THREAD];
-time_t uptime_threshold = 60;
+#define MAX_THREAD 128
 int cnt=0;
 int cookie_index=1;
 int PORT = 8000;
@@ -59,7 +57,6 @@ string key_path = "./";
 
 typedef struct {
   pthread_t tid;
-  int order;
   deque<EhttpPtr> *conn_pool;
 } Thread;
 
@@ -148,19 +145,12 @@ string get_username_from_session(EhttpPtr obj) {
 int status_handler (EhttpPtr obj) {
   log(1) << "Status Handler In" << endl;
   obj->out_set_file("stringtemplate.json");
-  int alive_count = 0;
-  time_t now = time(NULL);
-  for (int i = 0; i < MAX_THREAD; ++i) {
-    if (now - uptime[i] <= uptime_threshold)
-      alive_count ++;
-  }
 
   stringstream ss;
   ss  << "requestCallCount:" << request_call_count << " ";
   ss << "pollingCallCount:" << polling_call_count << " ";
   ss << "downloadCallCount:" << download_call_count << " ";
   ss << "uploadCallCount:" << upload_call_count << " ";
-  ss << "aliveThreadCount:" << alive_count << " ";
   ss << "uploadFileSize:" << upload_file_size << endl;
   obj->getResponseHeader()["Content-Type"] = "text/plain";
   obj->out_replace_token("string",ss.str());
@@ -563,7 +553,7 @@ int upload_handler(EhttpPtr obj) {
   string key = obj->getPostParams()["incrkey"];
   string command = obj->getPostParams()["command"];
 
-  obj->log(2) << "UPLOAD HANDLER: " << key << endl;
+  obj->log(0) << "UPLOAD HANDLER: " << key << endl;
 
   // fetch request.
   RequestPtr request;
@@ -572,7 +562,7 @@ int upload_handler(EhttpPtr obj) {
     obj->log(1) << "incrkey " << key << " is erased!" << endl;
     request = requests_key[key];
     requests_key.erase(key);
-    obj->log(1) << "request count " << request.use_count() << endl;
+    obj->log(0) << "request count " << request.use_count() << endl;
   }
   TUNLOCK(mutex_requests_key);
 
@@ -751,11 +741,8 @@ void *main_thread(void *arg) {
       TUNLOCK(new_connection_mutex);
     }
     log(0) << "FETCH END! THREAD:" << thread->tid << endl;
-	uptime[thread->order] = time(NULL);
-	log(0) << "uptime updated" << endl;
 
     if (http->isSsl) {
-	  log(0) << "isSSL Check" << endl;
       if (http->initSSL(ctx) < 0) {
         log(2) << "INIT SSL ERROR" << endl;
         http->close();
@@ -764,9 +751,7 @@ void *main_thread(void *arg) {
     }
 
     // job
-	log(0) << "init start" << endl;
     http->init();
-	log(0) << "add_handler" << endl;
     http->add_handler("/polling", polling_handler);
     http->add_handler("/upload", upload_handler);
     http->add_handler("/request", request_handler);
@@ -776,7 +761,6 @@ void *main_thread(void *arg) {
 
     http->add_handler("/mac", mac_handler);
     http->add_handler("/status", status_handler);
-	log(0) << "add_NULL_handler" << endl;
     http->add_handler(NULL, handleDefault);
 
     // nonblock(http->getFD());
@@ -986,7 +970,6 @@ int main(int argc, char** args) {
   /* create threads */
   for(int i = 0; i < MAX_THREAD; i++) {
     threads[i].conn_pool = &conn_pool;
-	threads[i].order = i;
     pthread_create(&threads[i].tid, NULL, &main_thread, (void *)&threads[i]);
   }
 

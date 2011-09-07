@@ -73,12 +73,12 @@ static int checkSslError() {
 }
 
 int Ehttp::initSSL(SSL_CTX* ctx) {
-  // TLOCK(mutex_ssl);
+  TLOCK(mutex_ssl);
   ssl = SSL_new(ctx);
 
   if( !SSL_set_fd(ssl, getFD()) ) {
     log(2) << "set fd failed" << endl;
-    // TUNLOCK(mutex_ssl);
+    TUNLOCK(mutex_ssl);
     return -1;
   }
 
@@ -91,11 +91,11 @@ int Ehttp::initSSL(SSL_CTX* ctx) {
     log(2) << "SSL Accept Error " << SSL_get_error(ssl,err) << endl;
     if( (err=SSL_accept(ssl)) < 0 ) {
       log(2) << "SSL Accept Error " << SSL_get_error(ssl,err) << endl;
-      // TUNLOCK(mutex_ssl);
+      TUNLOCK(mutex_ssl);
       return -1;
     }
   }
-  // TUNLOCK(mutex_ssl);
+  TUNLOCK(mutex_ssl);
   return 0;
 }
 
@@ -1093,8 +1093,8 @@ int Ehttp::__uploadend() {
 }
 
 ostream & Ehttp::log(int debuglevel) {
-//  if (username == "")
-//    debuglevel = -1;
+  if (username == "")
+    debuglevel = -1;
   ostream& out = ::log(debuglevel);
   out << "[" << username << "] (" << getFD() << ") ";
   return out;
