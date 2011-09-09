@@ -143,7 +143,7 @@ string get_username_from_session(EhttpPtr obj) {
 }
 
 int status_handler (EhttpPtr obj) {
-  log(1) << "Status Handler In" << endl;
+  obj->log(1) << "Status Handler In" << endl;
   obj->out_set_file("stringtemplate.json");
 
   stringstream ss;
@@ -161,7 +161,6 @@ int status_handler (EhttpPtr obj) {
 }
 
 int login_handler(EhttpPtr obj) {
-  log(1) << "Login Handler In" << endl;
   obj->log(1) << "Login Handler called" << endl;
   if ((obj->getPostParams()).count("email") > 0) {
     obj->log(0) << "POST" << endl;
@@ -234,11 +233,11 @@ int login_handler(EhttpPtr obj) {
 }
 
 int mac_handler(EhttpPtr obj) {
-  log(1) << "Mac Handler called" << endl;
   if ((obj->getPostParams()).count("email") > 0) {
     obj->log(0) << "POST" << endl;
     string email = obj->getPostParams()["email"];
     string password = obj->getPostParams()["password"];
+    obj->log(1) << "Mac Handler called [" << email << "]" << endl;
 
     if (password.empty()) {
       password = obj->getPostParams()["padpasskey"];
@@ -427,6 +426,13 @@ int request_handler(EhttpPtr obj) {
     int ret = obj->out_commit();
     obj->close();
     return ret;
+  } else if (obj->getUrlParams()["command"] != "getfolderlist" && obj->getUrlParams()["command"] != "getfile") {
+    obj->out_set_file("errormessage.json");
+    obj->out_replace_token("fail", "Device doesn't exist");
+    obj->out_replace();
+    obj->out_commit();
+    obj->close();
+    return EHTTP_ERR_OK;
   }
 
   if (obj->getUrlParams().count("device") == 0 || obj->getUrlParams()["device"] == "") {
@@ -563,7 +569,7 @@ int upload_handler(EhttpPtr obj) {
   RequestPtr request;
   TLOCK(mutex_requests_key);
   if (requests_key.count(key)) {
-    obj->log(1) << "incrkey " << key << " is erased!" << endl;
+    obj->log(0) << "incrkey " << key << " is erased!" << endl;
     request = requests_key[key];
     requests_key.erase(key);
     obj->log(0) << "request count " << request.use_count() << endl;
@@ -632,7 +638,7 @@ void *session_killer(void *arg) {
     TLOCK(mutex_session);
     for (map<string, Session>::iterator it = session.begin(); it != session.end(); ) {
       if ((*it).second.timestamp + session_expired_time <= now) {
-        cout << "Session Expired : " << (*it).first << endl;
+        log(1) << "Session Expired : " << (*it).first << endl;
 	map<string, Session>::iterator temp_iterator = it;
 	++it;
         session.erase((*temp_iterator).first);
@@ -744,7 +750,6 @@ void *main_thread(void *arg) {
       }
       TUNLOCK(new_connection_mutex);
     }
-    log(0) << "FETCH END! THREAD:" << thread->tid << endl;
 
     if (http->isSsl) {
       if (http->initSSL(ctx) < 0) {
@@ -768,8 +773,6 @@ void *main_thread(void *arg) {
     http->add_handler(NULL, handleDefault);
 
     // nonblock(http->getFD());
-
-    log(0) << "FETCH WORK END! THREAD:" << thread->tid << endl;
 
     if (http->parse_request() < 0) {
       http->close();
@@ -980,8 +983,8 @@ int main(int argc, char** args) {
   // pthread_t tid;
   // pthread_create(&tid, NULL, &timeout_killer, NULL);
 
-  pthread_t tid_session;
-  pthread_create(&tid_session, NULL, &session_killer, NULL);
+  // pthread_t tid_session;
+  // pthread_create(&tid_session, NULL, &session_killer, NULL);
 
   DrEpoll::get_mutable_instance().init();
 
