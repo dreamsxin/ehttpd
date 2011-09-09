@@ -426,13 +426,6 @@ int request_handler(EhttpPtr obj) {
     int ret = obj->out_commit();
     obj->close();
     return ret;
-  } else if (obj->getUrlParams()["command"] != "getfolderlist" && obj->getUrlParams()["command"] != "getfile") {
-    obj->out_set_file("errormessage.json");
-    obj->out_replace_token("fail", "Device doesn't exist");
-    obj->out_replace();
-    obj->out_commit();
-    obj->close();
-    return EHTTP_ERR_OK;
   }
 
   if (obj->getUrlParams().count("device") == 0 || obj->getUrlParams()["device"] == "") {
@@ -450,6 +443,16 @@ int request_handler(EhttpPtr obj) {
     obj->close();
     return EHTTP_ERR_OK;
   }
+
+  if (obj->getUrlParams()["command"] != "getfolderlist" && obj->getUrlParams()["command"] != "getfile") {
+    obj->out_set_file("errormessage.json");
+    obj->out_replace_token("fail", "Invalid command");
+    obj->out_replace();
+    obj->out_commit();
+    obj->close();
+    return EHTTP_ERR_OK;
+  }
+
 
   RequestPtr request(new Request);
   request->ehttp = obj;

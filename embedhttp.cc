@@ -711,7 +711,7 @@ int Ehttp::__parse_header(string &header) {
   case EHTTP_REQUEST_PUT: request_string_type = "PUT"; break;
   default: request_string_type = "DEFAULT";
   }
-  log(2) << "URL: " << filename << " [" << request_string_type << "]" << endl;
+  ::log(2) << "URL: " << filename << " [" << request_string_type << "]" << endl;
 
   // Save the complete URL
   url=filename;
@@ -1093,8 +1093,8 @@ int Ehttp::__uploadend() {
 }
 
 ostream & Ehttp::log(int debuglevel) {
- if (username == "")
-   debuglevel = -1;
+  if (username == "")
+    debuglevel = -1;
   ostream& out = ::log(debuglevel);
   out << "[" << username << "] (" << getFD() << ") ";
   return out;
