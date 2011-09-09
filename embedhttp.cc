@@ -711,7 +711,7 @@ int Ehttp::__parse_header(string &header) {
   case EHTTP_REQUEST_PUT: request_string_type = "PUT"; break;
   default: request_string_type = "DEFAULT";
   }
-  log(0) << "URL: " << filename << " [" << request_string_type << "]" << endl;
+  log(2) << "URL: " << filename << " [" << request_string_type << "]" << endl;
 
   // Save the complete URL
   url=filename;
@@ -922,13 +922,13 @@ int Ehttp::parse_request() {
   string header;
   string message;
 
-  if(__read_header(&header) != EHTTP_ERR_OK) {
+  if(read_header(&header) != EHTTP_ERR_OK) {
     // non socket
     // log(2) << "Error parsing request" << endl;
     return EHTTP_ERR_GENERIC;
   }
 
-  if(__parse_header(header) != EHTTP_ERR_OK) {
+  if(parse_header(header) != EHTTP_ERR_OK) {
     log(2) << "Error parsing request" << endl;
     return EHTTP_ERR_GENERIC;
   }
@@ -938,7 +938,7 @@ int Ehttp::parse_request() {
   log(0) << filename << endl;
   if(filename == "/upload" && global_parms["command"] == "getfile") {
   } else {
-    if (__parse_message() != EHTTP_ERR_OK) {
+    if (parse_message() != EHTTP_ERR_OK) {
       log(2) << "Error parsing request" << endl;
       return EHTTP_ERR_GENERIC;
     }
@@ -955,7 +955,7 @@ int Ehttp::parse_request() {
   log(0) << " out_buffer_clear" << endl;
 
   //Call the default handler if we didn't get the filename
-  __out_buffer_clear();
+  out_buffer_clear();
 
   log(0) << " pPreRequestHandler" << endl;
   if( pPreRequestHandler ) pPreRequestHandler( shared_from_this() );
@@ -997,7 +997,7 @@ void Ehttp::__close() {
     return;
   }
 
-  log(0) << "Connection close... " << endl;
+  log(2) << "Connection close... " << endl;
   ::shutdown(getFD(), SHUT_RDWR);
   ::close(getFD());
   fdState = 1;
@@ -1093,8 +1093,8 @@ int Ehttp::__uploadend() {
 }
 
 ostream & Ehttp::log(int debuglevel) {
-  if (username == "")
-    debuglevel = -1;
+ if (username == "")
+   debuglevel = -1;
   ostream& out = ::log(debuglevel);
   out << "[" << username << "] (" << getFD() << ") ";
   return out;

@@ -504,13 +504,16 @@ int polling_handler(EhttpPtr obj) {
 
   // fetch request.
   RequestPtr request;
+  obj->log(1) << "Before Locking" << endl;
   TLOCK(mutex_pollings);
   TLOCK(mutex_requests);
   if (requests.count(userid)) {
+    obj->log(1) << "Locking if1" << endl;
     request = requests[userid];
     requests.erase(userid);
   } else {
     if (pollings.count(userid) > 0) {
+      obj->log(1) << "Locking if2" << endl;
       pollings[userid]->ehttp->timeout();
       pollings.erase(userid);
     }
@@ -518,6 +521,7 @@ int polling_handler(EhttpPtr obj) {
   }
   TUNLOCK(mutex_requests);
   TUNLOCK(mutex_pollings);
+  obj->log(1) << "After Locking" << endl;
 
   if (request.get() != NULL) {
     obj->log(1) << "Request: Execute polling ("
