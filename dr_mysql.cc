@@ -39,6 +39,9 @@ bool DrMysql::login(string const &email, string const &password,
   try{
     pthread_mutex_lock(&mutex_login);
     driver->threadInit();
+    if (con == NULL) {
+      throw runtime_error("Fail to connect db server");
+    }
     string query = "SELECT *,password('" + password + "') as enc from app_users where email = '" + email + "'";
     scoped_ptr<Statement> stmt(con->createStatement());
     scoped_ptr<ResultSet> res(stmt->executeQuery(query));

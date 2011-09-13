@@ -513,16 +513,13 @@ int polling_handler(EhttpPtr obj) {
 
   // fetch request.
   RequestPtr request;
-  obj->log(1) << "Before Locking" << endl;
   TLOCK(mutex_pollings);
   TLOCK(mutex_requests);
   if (requests.count(userid)) {
-    obj->log(1) << "Locking if1" << endl;
     request = requests[userid];
     requests.erase(userid);
   } else {
     if (pollings.count(userid) > 0) {
-      obj->log(1) << "Locking if2" << endl;
       pollings[userid]->ehttp->timeout();
       pollings.erase(userid);
     }
@@ -530,7 +527,6 @@ int polling_handler(EhttpPtr obj) {
   }
   TUNLOCK(mutex_requests);
   TUNLOCK(mutex_pollings);
-  obj->log(1) << "After Locking" << endl;
 
   if (request.get() != NULL) {
     obj->log(1) << "Request: Execute polling ("
@@ -634,7 +630,7 @@ size_t filesize(const char *filename){
 }
 
 void *session_killer(void *arg) {
-  log(1) << "Session Killer In" << endl;
+  log(0) << "Session Killer In" << endl;
   while(1) {
     sleep(600);
     time_t now = time(NULL);
@@ -654,23 +650,24 @@ void *session_killer(void *arg) {
 }
 
 void *mysql_updator(void *arg) {
-  log(1) << "Mysql Updater In" << endl;
+  log(0) << "Mysql Updater In" << endl;
   while(1) {
+    log(0) << "Mysql connection update" << endl;
     DrMysql::connection_init();
-    sleep(600);
+    sleep(300);
   }
 }
 
 void *timeout_killer(void *arg) {
   log(1) << "Timeout Killer In" << endl;
   while(1) {
-    sleep(1);
+    sleep(2);
     time_t now = time(NULL);
     TLOCK(mutex_queue_requests);
     while (!queue_requests.empty()) {
       RequestPtr ptr = queue_requests.front();
       if (ptr->ehttp->timestamp + timeout_sec_default <= now) {
-        ptr->ehttp->log(1) << "request queue timeout" << endl;
+        ptr->ehttp->log(0) << "Request queue timeout" << endl;
         queue_requests.pop();
         TLOCK(mutex_requests);
         if (requests.count(ptr->userid) > 0 && requests[ptr->userid].get() == ptr.get()) {
@@ -689,8 +686,7 @@ void *timeout_killer(void *arg) {
     while(!queue_pollings.empty()) {
       PollingPtr ptr = queue_pollings.front();
       if (ptr->ehttp->timestamp + timeout_sec_polling <= now) {
-        ptr->ehttp->log(1) << "polling queue timeout" << endl;
-        ptr->ehttp->log(1) << "polling queue: " << ptr->userid << endl;
+        ptr->ehttp->log(0) << "Polling queue timeout" << endl;
         queue_pollings.pop();
         TLOCK(mutex_pollings);
         if (pollings.count(ptr->userid) > 0 && pollings[ptr->userid].get() == ptr.get()) {
@@ -706,8 +702,8 @@ void *timeout_killer(void *arg) {
 
     TLOCK(mutex_queue_requests_key);
     while(!queue_requests_key.empty()) {
-      log(0) << "requests key queue timeout"  << queue_requests_key.front().use_count() << " " << queue_requests_key.front()->key  << endl;
       RequestPtr ptr = queue_requests_key.front();
+      ptr->ehttp->log(0) << "requests key queue timeout"  << ptr.use_count() << " " << ptr->key  << endl;
       if (ptr->ehttp->timestamp + timeout_sec_requests_key <= now) {
         queue_requests_key.pop();
 
@@ -983,11 +979,11 @@ int main(int argc, char** args) {
     pthread_create(&threads[i].tid, NULL, &main_thread, (void *)&threads[i]);
   }
 
-  // pthread_t tid;
-  // pthread_create(&tid, NULL, &timeout_killer, NULL);
+  pthread_t tid;
+  pthread_create(&tid, NULL, &timeout_killer, NULL);
 
-  // pthread_t tid_session;
-  // pthread_create(&tid_session, NULL, &session_killer, NULL);
+  pthread_t tid_session;
+  pthread_create(&tid_session, NULL, &session_killer, NULL);
 
   DrEpoll::get_mutable_instance().init();
 

@@ -8,7 +8,7 @@ using namespace boost;
 #include <connection.h>
 #include <pthread.h>
 
-#define DBHOST "tcp://directreader.net:3306"
+#define DBHOST "tcp://www.directreader.net:3306"
 #define USER "namilee"
 #define PASSWORD "dlp1004"
 #define DATABASE "DIRECTREADER"
@@ -27,10 +27,16 @@ public:
 
   static void connection_init() {
     pthread_mutex_lock(&mutex_login);
-    driver = get_driver_instance();
-    con.reset(driver->connect(DBHOST, USER, PASSWORD));
-    con->setSchema(DATABASE);
-    pthread_mutex_unlock(&mutex_login);
+    try {
+      driver = get_driver_instance();
+      con.reset(driver->connect(DBHOST, USER, PASSWORD));
+      con->setSchema(DATABASE);
+      pthread_mutex_unlock(&mutex_login);
+    } catch (std::runtime_error &e) {
+      cout << "ERROR: runtime_error in " << __FILE__;
+      cout << " (" << __func__ << ") on line " << __LINE__ << endl;
+      pthread_mutex_unlock(&mutex_login);
+    }
   }
 
   bool login(string const &email, string const &password,

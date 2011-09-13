@@ -158,14 +158,14 @@ ssize_t Ehttp::__send(const char *buf, size_t len) {
 }
 
 
-ssize_t Ehttp::recv(void *buf, size_t len) {
-  TLOCK(mutex_ehttp);
-  ssize_t ret = __recv(buf, len);
-  TUNLOCK(mutex_ehttp);
-  return ret;
-}
+// ssize_t Ehttp::__recv(void *buf, size_t len) {
+//   TLOCK(mutex_ehttp);
+//   ssize_t ret = recv(buf, len);
+//   TUNLOCK(mutex_ehttp);
+//   return ret;
+// }
 
-ssize_t Ehttp::__recv(void *buf, size_t len) {
+ssize_t Ehttp::recv(void *buf, size_t len) {
   if (isClose()) {
     return -1;
   }
@@ -527,14 +527,16 @@ void Ehttp::__add_handler(char *filename, int (*pHandler)(EhttpPtr obj)) {
   }
 }
 
-int Ehttp::read_header(string *header) {
+/*
+int Ehttp::__read_header(string *header) {
   TLOCK(mutex_ehttp);
   int ret = __read_header(header);
   TUNLOCK(mutex_ehttp);
   return ret;
 }
+*/
 
-int Ehttp::__read_header(string *header) {
+int Ehttp::read_header(string *header) {
   *header = "";
   size_t offset;
   log(0) << "read_header..." << endl;
@@ -542,7 +544,7 @@ int Ehttp::__read_header(string *header) {
   Byte buffer[INPUT_BUFFER_SIZE];
 
   while((offset = header->find("\r\n\r\n")) == string::npos) {
-    int r = __recv(buffer, INPUT_BUFFER_SIZE - 1);
+    int r = recv(buffer, INPUT_BUFFER_SIZE - 1);
 
     log(0) << "read_header r:" << r << "/fdState : " << fdState << endl;
 
@@ -566,14 +568,16 @@ int Ehttp::__read_header(string *header) {
   return EHTTP_ERR_OK;
 }
 
+/*
 int Ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
   TLOCK(mutex_ehttp);
   int ret = __parse_out_pairs(remainder, parms);
   TUNLOCK(mutex_ehttp);
   return ret;
 }
+*/
 
-int Ehttp::__parse_out_pairs(string &remainder, map <string, string> &parms) {
+int Ehttp::parse_out_pairs(string &remainder, map <string, string> &parms) {
   string id;
   string value;
   int state = 0;
@@ -628,14 +632,16 @@ int Ehttp::__parse_out_pairs(string &remainder, map <string, string> &parms) {
   return EHTTP_ERR_OK;
 }
 
-int Ehttp::parse_header(string &header) {
+/*
+int Ehttp::__parse_header(string &header) {
   TLOCK(mutex_ehttp);
   int ret = __parse_header(header);
   TUNLOCK(mutex_ehttp);
   return ret;
 }
+*/
 
-int Ehttp::__parse_header(string &header) {
+int Ehttp::parse_header(string &header) {
   char *request=NULL;
   char *request_end=NULL;
   char *pHeader = const_cast<char *>(header.c_str());
@@ -722,7 +728,7 @@ int Ehttp::__parse_header(string &header) {
     // Yank out filename minus parms which follow
     string remainder=filename.substr(idx+1);
     filename=filename.substr(0,idx);
-    __parse_out_pairs(remainder, url_parms);
+    parse_out_pairs(remainder, url_parms);
   }
 
   // Find request headers,
@@ -848,14 +854,16 @@ int Ehttp::__parse_cookie(string &cookie_string) {
   return EHTTP_ERR_OK;
 }
 
+/*
 int Ehttp::parse_message() {
   TLOCK(mutex_ehttp);
   int ret = __parse_message();
   TUNLOCK(mutex_ehttp);
   return ret;
 }
+*/
 
-int Ehttp::__parse_message() {
+int Ehttp::parse_message() {
   if( !contentlength ) return EHTTP_ERR_OK;
 
   log(0) << "Parsed content length:" << contentlength << endl;
@@ -872,7 +880,7 @@ int Ehttp::__parse_message() {
 
     Byte buffer[INPUT_BUFFER_SIZE];
     while(contentlength > message.length()) {
-      int r = __recv(buffer, INPUT_BUFFER_SIZE - 1);
+      int r = recv(buffer, INPUT_BUFFER_SIZE - 1);
       if(r <= 0 || fdState == 1) {
         return EHTTP_ERR_GENERIC;
       }
@@ -892,7 +900,7 @@ int Ehttp::__parse_message() {
 
   // Got here, good, we got the entire reported msg length
   log(0) << "Entire message is <" << message << ">" << endl;
-  __parse_out_pairs(message, post_parms);
+  parse_out_pairs(message, post_parms);
 
   return EHTTP_ERR_OK;
 }

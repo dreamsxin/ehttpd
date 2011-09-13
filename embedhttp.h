@@ -125,10 +125,10 @@ class Ehttp: public boost::enable_shared_from_this<Ehttp> {
   int __error(const string &error_message);
   int __timeout();
   int __uploadend();
-  int __read_header(string *header);
-  int __parse_header(string &header);
-  int __parse_out_pairs(string &remainder, map <string, string> &parms );
-  int __parse_message();
+  //int __read_header(string *header);
+  //int __parse_header(string &header);
+  //int __parse_out_pairs(string &remainder, map <string, string> &parms );
+  //int __parse_message();
   int __unescape(string *str);
   int __addslash(string *str);
   int __parse_cookie(string &cookie_string);
@@ -139,7 +139,7 @@ class Ehttp: public boost::enable_shared_from_this<Ehttp> {
   void __out_write_str( string &str );
 
   ssize_t __send(const char *buf, size_t len);
-  ssize_t __recv(void *buf, size_t len);
+  /* ssize_t __recv(void *buf, size_t len); */
 
  public:
   string username;
