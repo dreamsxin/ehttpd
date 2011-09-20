@@ -118,7 +118,7 @@ class Ehttp: public boost::enable_shared_from_this<Ehttp> {
  private:
   int __init();
   int __out_replace(void);
-  int __out_commit_binary(void);
+  //int __out_commit_binary(void);
   int __out_commit(int header=EHTTP_HDR_OK);
   void __add_handler( char *filename, int (*pHandler)(EhttpPtr obj));
   void __close();
@@ -138,7 +138,7 @@ class Ehttp: public boost::enable_shared_from_this<Ehttp> {
   void __out_write_str( char *str );
   void __out_write_str( string &str );
 
-  ssize_t __send(const char *buf, size_t len);
+  /* ssize_t __send(const char *buf, size_t len); */
   /* ssize_t __recv(void *buf, size_t len); */
 
  public:
@@ -216,7 +216,7 @@ class Ehttp: public boost::enable_shared_from_this<Ehttp> {
 
   int out_replace(void);
 
-  int out_commit_binary(void);
+  //int out_commit_binary(void);
 
   int out_commit(int header=EHTTP_HDR_OK);
 

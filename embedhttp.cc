@@ -99,14 +99,16 @@ int Ehttp::initSSL(SSL_CTX* ctx) {
   return 0;
 }
 
+/*
 ssize_t Ehttp::send(const char *buf, size_t len) {
   TLOCK(mutex_ehttp);
   ssize_t ret = __send(buf, len);
   TUNLOCK(mutex_ehttp);
   return ret;
 }
+*/
 
-ssize_t Ehttp::__send(const char *buf, size_t len) {
+ssize_t Ehttp::send(const char *buf, size_t len) {
   if (isClose()) {
     return -1;
   }
@@ -413,56 +415,20 @@ int Ehttp::__out_replace(void) {
 }
 
 
-int Ehttp::out_commit_binary(void) {
-  TLOCK(mutex_ehttp);
-  int ret = __out_commit_binary();
-  TUNLOCK(mutex_ehttp);
-  return ret;
-}
-
-int Ehttp::__out_commit_binary(void) {
-  int err = 0;
-  FILE *f = fopen(outfilename.c_str(), "rb");
-  char buffer[10240];
-  if (f) {
-    while(!feof(f)) {
-      int r = fread(buffer, 1, sizeof(10240), f);
-      if (r > 0) {
-        int remain = r;
-        int total = remain;
-        while(remain) {
-          int w = __send(buffer + (total - remain), remain);
-          log(0) << w << endl;
-          if(w < 0 || fdState == 1) {
-            err = w;
-            remain = 0;
-            fseek(f, SEEK_END, 0L);
-          } else {
-            remain -= w;
-          }
-        }
-      }
-    }
-    fclose(f);
-  }
-  return err;
-}
-
+/*
 int Ehttp::out_commit(int header) {
   TLOCK(mutex_ehttp);
   int ret = __out_commit(header);
   TUNLOCK(mutex_ehttp);
   return ret;
 }
+*/
 
-int Ehttp::__out_commit(int header) {
+int Ehttp::out_commit(int header) {
   int w;
   int err = 0;
 
   log(0) << "Outbuffer before outcommit [[[" << outbuffer << "]]]" << endl;
-  if( filetype == EHTTP_BINARY_FILE) {
-    return __out_commit_binary();
-  }
 
   if( header == EHTTP_HDR_OK) {
     string headr("HTTP/1.0 200 OK\r\n");
@@ -490,7 +456,7 @@ int Ehttp::__out_commit(int header) {
   int remain = outbuffer.length();
   int total = remain;
   while (remain > 0) {
-    w=__send(outbuffer.c_str() + (total - remain), remain);
+    w=send(outbuffer.c_str() + (total - remain), remain);
     log(0) << w << endl;
     if(w < 0 || fdState == 1) {
       err = w;
@@ -1057,7 +1023,7 @@ int Ehttp::__error(const string &error_message) {
     __out_set_file("errormessage.json");
     __out_replace_token("fail", error_message);
     __out_replace();
-    __out_commit();
+    out_commit();
     __close();
   }
   return EHTTP_ERR_GENERIC;
@@ -1075,7 +1041,7 @@ int Ehttp::__timeout() {
     log(0) << "timeout " << endl;
     __out_set_file("timeout.json");
     __out_replace();
-    __out_commit();
+    out_commit();
     __close();
   }
   return EHTTP_ERR_GENERIC;
@@ -1094,7 +1060,7 @@ int Ehttp::__uploadend() {
     __out_set_file("request.json");
     __out_replace_token("jsondata", "\"\"");
     __out_replace();
-    __out_commit();
+    out_commit();
     __close();
   }
   return EHTTP_ERR_GENERIC;
@@ -1105,5 +1071,7 @@ ostream & Ehttp::log(int debuglevel) {
     debuglevel = -1;
   ostream& out = ::log(debuglevel);
   out << "[" << username << "] (" << getFD() << ") ";
+  if (isSsl == true)
+    out << "[S]";
   return out;
 }
