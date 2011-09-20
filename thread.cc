@@ -38,6 +38,8 @@ using namespace std;
 namespace po = boost::program_options;
 
 #define MAX_THREAD 128
+time_t uptime[MAX_THREAD];
+time_t uptime_threshold = 60 * 60;
 int cnt=0;
 int cookie_index=1;
 int PORT = 8000;
@@ -57,6 +59,7 @@ string key_path = "./";
 
 typedef struct {
   pthread_t tid;
+  int order;
   deque<EhttpPtr> *conn_pool;
 } Thread;
 
@@ -145,12 +148,20 @@ string get_username_from_session(EhttpPtr obj) {
 int status_handler (EhttpPtr obj) {
   obj->log(1) << "Status Handler In" << endl;
   obj->out_set_file("stringtemplate.json");
+  int zombie_count = 0;
+  time_t now = time(NULL);
+  for (int i = 0; i < MAX_THREAD; ++i) {
+    if (uptime[i] != 0 && now - uptime[i] >= uptime_threshold) {
+      zombie_count ++;
+    }
+  }
 
   stringstream ss;
   ss  << "requestCallCount:" << request_call_count << " ";
   ss << "pollingCallCount:" << polling_call_count << " ";
   ss << "downloadCallCount:" << download_call_count << " ";
   ss << "uploadCallCount:" << upload_call_count << " ";
+  ss << "zombieThreadCount:" << zombie_count << " ";
   ss << "uploadFileSize:" << upload_file_size << endl;
   obj->getResponseHeader()["Content-Type"] = "text/plain";
   obj->out_replace_token("string",ss.str());
@@ -749,7 +760,7 @@ void *main_thread(void *arg) {
       }
       TUNLOCK(new_connection_mutex);
     }
-
+    uptime[thread->order] = time(NULL);
     if (http->isSsl) {
       if (http->initSSL(ctx) < 0) {
         log(2) << "INIT SSL ERROR" << endl;
@@ -976,6 +987,8 @@ int main(int argc, char** args) {
   /* create threads */
   for(int i = 0; i < MAX_THREAD; i++) {
     threads[i].conn_pool = &conn_pool;
+    threads[i].order = i;
+    uptime[i] = 0;
     pthread_create(&threads[i].tid, NULL, &main_thread, (void *)&threads[i]);
   }
 
