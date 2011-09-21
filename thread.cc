@@ -843,6 +843,10 @@ void *http_listen (void *arg) {
     if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
       exit(1);
     }
+    struct timeval tv;
+    tv.tv_sec = 10;
+    setsockopt(clifd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&tv, sizeof(struct timeval));
+    setsockopt(clifd, SOL_SOCKET, SO_SNDTIMEO, (struct timeval *)&tv, sizeof(struct timeval));
     static int linger[2] = {0,0};
     setsockopt(clifd, SOL_SOCKET,SO_LINGER,&linger, sizeof(linger));
     TLOCK(new_connection_mutex);
@@ -915,6 +919,10 @@ void *https_listen (void *arg) {
     if((clifd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
       exit(1);
     }
+    struct timeval tv;
+    tv.tv_sec = 10;
+    setsockopt(clifd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&tv, sizeof(struct timeval));
+    setsockopt(clifd, SOL_SOCKET, SO_SNDTIMEO, (struct timeval *)&tv, sizeof(struct timeval));
 
     static int linger[2] = {0,0};
     setsockopt(clifd, SOL_SOCKET,SO_LINGER,&linger, sizeof(linger));
