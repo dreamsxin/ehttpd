@@ -47,6 +47,7 @@ int timeout_sec_default = 10;
 int timeout_sec_polling = 60;
 int timeout_sec_requests_key = 30;
 int session_expired_time = 3600;
+int queue_size = 0;
 
 long long request_call_count = 0;
 long long polling_call_count = 0;
@@ -149,10 +150,14 @@ int status_handler (EhttpPtr obj) {
   obj->log(1) << "Status Handler In" << endl;
   obj->out_set_file("stringtemplate.json");
   int zombie_count = 0;
+  int init_state_thread = 0;
   time_t now = time(NULL);
   for (int i = 0; i < MAX_THREAD; ++i) {
     if (uptime[i] != 0 && now - uptime[i] >= uptime_threshold) {
       zombie_count ++;
+    }
+    if (uptime[i] == 0) {
+      init_state_thread ++;
     }
   }
 
@@ -162,6 +167,8 @@ int status_handler (EhttpPtr obj) {
   ss << "downloadCallCount:" << download_call_count << " ";
   ss << "uploadCallCount:" << upload_call_count << " ";
   ss << "zombieThreadCount:" << zombie_count << " ";
+  ss << "initThreadCount:" << init_state_thread << " ";
+  ss << "queueSize:" << queue_size << " ";
   ss << "uploadFileSize:" << upload_file_size << endl;
   obj->getResponseHeader()["Content-Type"] = "text/plain";
   obj->out_replace_token("string",ss.str());
@@ -840,6 +847,7 @@ void *http_listen (void *arg) {
     setsockopt(clifd, SOL_SOCKET,SO_LINGER,&linger, sizeof(linger));
     TLOCK(new_connection_mutex);
     log(0) << "Http Accepted... " << clifd << "  / Queue size : " << conn_pool->size() << " / Thread: " << MAX_THREAD << endl;
+    queue_size = conn_pool->size();
 
     EhttpPtr http = EhttpPtr(new Ehttp());
     http->isSsl = false;
@@ -912,6 +920,7 @@ void *https_listen (void *arg) {
     setsockopt(clifd, SOL_SOCKET,SO_LINGER,&linger, sizeof(linger));
     TLOCK(new_connection_mutex);
     log(0) << "Https Accepted... " << clifd << "  / Queue size : " << conn_pool->size() << " / Thread: " << MAX_THREAD << endl;
+    queue_size = conn_pool->size();
 
     EhttpPtr http = EhttpPtr(new Ehttp());
     http->isSsl = true;
