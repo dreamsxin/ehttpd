@@ -1039,10 +1039,12 @@ int Ehttp::timeout() {
 int Ehttp::__timeout() {
   if (!isClose()) {
     log(0) << "timeout " << endl;
-    __out_buffer_clear();
-    __out_set_file("timeout.json");
-    __out_replace();
-    out_commit();
+    if ((int)(outbuffer.size()) == 0) {
+      __out_buffer_clear();
+      __out_set_file("timeout.json");
+      __out_replace();
+      out_commit();
+    }
     __close();
   }
   return EHTTP_ERR_GENERIC;
