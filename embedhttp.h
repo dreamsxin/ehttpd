@@ -138,8 +138,8 @@ class Ehttp: public boost::enable_shared_from_this<Ehttp> {
   void __out_write_str( char *str );
   void __out_write_str( string &str );
 
-  /* ssize_t __send(const char *buf, size_t len); */
-  /* ssize_t __recv(void *buf, size_t len); */
+  ssize_t __send(const char *buf, size_t len);
+  ssize_t __recv(void *buf, size_t len);
 
  public:
   string username;

@@ -99,16 +99,14 @@ int Ehttp::initSSL(SSL_CTX* ctx) {
   return 0;
 }
 
-/*
 ssize_t Ehttp::send(const char *buf, size_t len) {
   TLOCK(mutex_ehttp);
   ssize_t ret = __send(buf, len);
   TUNLOCK(mutex_ehttp);
   return ret;
 }
-*/
 
-ssize_t Ehttp::send(const char *buf, size_t len) {
+ssize_t Ehttp::__send(const char *buf, size_t len) {
   if (isClose()) {
     return -1;
   }
@@ -160,14 +158,14 @@ ssize_t Ehttp::send(const char *buf, size_t len) {
 }
 
 
-// ssize_t Ehttp::__recv(void *buf, size_t len) {
-//   TLOCK(mutex_ehttp);
-//   ssize_t ret = recv(buf, len);
-//   TUNLOCK(mutex_ehttp);
-//   return ret;
-// }
-
 ssize_t Ehttp::recv(void *buf, size_t len) {
+  TLOCK(mutex_ehttp);
+  ssize_t ret = __recv(buf, len);
+  TUNLOCK(mutex_ehttp);
+  return ret;
+}
+
+ssize_t Ehttp::__recv(void *buf, size_t len) {
   if (isClose()) {
     return -1;
   }
@@ -415,16 +413,14 @@ int Ehttp::__out_replace(void) {
 }
 
 
-/*
 int Ehttp::out_commit(int header) {
   TLOCK(mutex_ehttp);
   int ret = __out_commit(header);
   TUNLOCK(mutex_ehttp);
   return ret;
 }
-*/
 
-int Ehttp::out_commit(int header) {
+int Ehttp::__out_commit(int header) {
   int w;
   int err = 0;
 
@@ -456,7 +452,7 @@ int Ehttp::out_commit(int header) {
   int remain = outbuffer.length();
   int total = remain;
   while (remain > 0) {
-    w=send(outbuffer.c_str() + (total - remain), remain);
+    w = __send(outbuffer.c_str() + (total - remain), remain);
     log(0) << w << endl;
     if(w < 0 || fdState == 1) {
       err = w;
@@ -1023,7 +1019,7 @@ int Ehttp::__error(const string &error_message) {
     __out_set_file("errormessage.json");
     __out_replace_token("fail", error_message);
     __out_replace();
-    out_commit();
+    __out_commit();
     __close();
   }
   return EHTTP_ERR_GENERIC;
@@ -1043,7 +1039,7 @@ int Ehttp::__timeout() {
       __out_buffer_clear();
       __out_set_file("timeout.json");
       __out_replace();
-      out_commit();
+      __out_commit();
     }
     __close();
   }
@@ -1063,7 +1059,7 @@ int Ehttp::__uploadend() {
     __out_set_file("request.json");
     __out_replace_token("jsondata", "\"\"");
     __out_replace();
-    out_commit();
+    __out_commit();
     __close();
   }
   return EHTTP_ERR_GENERIC;
